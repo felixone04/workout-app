@@ -1,6 +1,6 @@
 'use strict';
 
-const APP_VERSION = '2.3.0';
+const APP_VERSION = '2.4.0';
 const STORE_KEY = 'workoutAppV1';
 const LEGACY_KEYS = ['mySigmaV3', 'mySigmaV2'];
 const SETTINGS_KEY = 'workoutAppSettings';
@@ -35,6 +35,21 @@ function toast(msg, icon = 'fa-circle-check') {
     t.classList.remove('hidden-toast');
     clearTimeout(toastTimer);
     toastTimer = setTimeout(() => t.classList.add('hidden-toast'), 2000);
+}
+
+/** Carica una libreria esterna solo quando serve (una volta sola). */
+const loadedScripts = {};
+function loadScript(src) {
+    if (!loadedScripts[src]) {
+        loadedScripts[src] = new Promise((resolve, reject) => {
+            const s = document.createElement('script');
+            s.src = src;
+            s.onload = resolve;
+            s.onerror = () => { delete loadedScripts[src]; reject(new Error('caricamento non riuscito: ' + src)); };
+            document.head.appendChild(s);
+        });
+    }
+    return loadedScripts[src];
 }
 
 function shake(el) {
@@ -113,7 +128,10 @@ function normalizeData(p) {
             id: String(f.id || `${Date.now()}-${i}`),
             name: String(f.name),
             category: CATEGORIES.includes(f.category) ? f.category : 'Carboidrati',
-            macroValue: parseNum(f.macroValue) || 0
+            macroValue: parseNum(f.macroValue) || 0,
+            // alimenti scansionati: codice a barre e valori completi per 100 g
+            ...(f.barcode ? { barcode: String(f.barcode) } : {}),
+            ...(f.macros && typeof f.macros === 'object' ? { macros: f.macros } : {})
         }));
     }
     return out;
@@ -1455,7 +1473,7 @@ function renderDb() {
                 <span class="w-9 h-9 rounded-xl ${s.bg} ${s.text} font-extrabold text-sm flex items-center justify-center shrink-0">${s.short}</span>
                 <div class="flex-1 min-w-0">
                     <p class="font-bold text-sm truncate">${esc(f.name)}</p>
-                    <p class="text-xs text-muted font-semibold">${f.category === 'Verdure' ? 'Verdura libera' : `${fmt(f.macroValue)}g ${s.label.toLowerCase()} / 100g`}</p>
+                    <p class="text-xs text-muted font-semibold">${f.category === 'Verdure' ? 'Verdura libera' : `${fmt(f.macroValue)}g ${s.label.toLowerCase()} / 100g`}${f.barcode ? ' · <i class="fa-solid fa-barcode"></i>' : ''}</p>
                 </div>
                 <button onclick="deleteDbFood(${i})" class="w-9 h-9 rounded-full text-muted hover:text-rose-500 flex items-center justify-center" aria-label="Elimina"><i class="fa-solid fa-trash-can text-sm"></i></button>
             </div>`;
@@ -1773,6 +1791,8 @@ fillTimerCfg();
 setTimerMode(settings.timerMode === 'interval' ? 'interval' : 'free');
 
 (function boot() {
+    // link di condivisione scheda: gestito da share.js dopo l'avvio
+    if (location.hash.startsWith('#import=')) window.pendingShareCode = location.hash.slice(8);
     const hash = location.hash.replace('#', '');
     const start = ['workout', 'diet', 'db'].includes(hash) ? hash : 'home';
     go(start, {}, { replace: true });

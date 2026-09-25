@@ -165,7 +165,10 @@
                     <p class="text-xs font-bold uppercase tracking-widest text-brand">Allenamento</p>
                     <h2 class="text-3xl font-extrabold tracking-tight">Le tue schede</h2>
                 </div>
-                <button onclick="addWorkoutDay()" class="btn-soft px-4 py-2.5 text-sm text-brand"><i class="fa-solid fa-plus"></i> Scheda</button>
+                <div class="flex gap-2">
+                    <button onclick="openImport()" class="btn-soft w-11 h-11 text-sm text-brand" aria-label="Importa scheda"><i class="fa-solid fa-file-import"></i></button>
+                    <button onclick="addWorkoutDay()" class="btn-soft px-4 h-11 text-sm text-brand"><i class="fa-solid fa-plus"></i> Scheda</button>
+                </div>
             </div>
             <div id="weekStrip" class="mb-4"></div>
             <div id="workoutGrid" class="grid grid-cols-2 gap-3"></div>
@@ -208,6 +211,7 @@
             </div>
             <div class="flex gap-2 mb-5">
                 <button onclick="promptAddEx()" class="btn-primary flex-1 !w-auto py-3 text-sm"><i class="fa-solid fa-plus"></i> Nuovo esercizio</button>
+                <button onclick="openShare()" class="btn-soft w-12 !text-brand" aria-label="Condividi scheda"><i class="fa-solid fa-share-nodes"></i></button>
                 <button onclick="duplicateWorkoutDay()" class="btn-soft w-12" aria-label="Duplica scheda"><i class="fa-solid fa-copy"></i></button>
                 <button onclick="deleteWorkoutDay()" class="btn-soft w-12 !text-rose-500" aria-label="Elimina scheda"><i class="fa-solid fa-trash"></i></button>
             </div>
@@ -269,7 +273,10 @@
                         <h3 class="font-extrabold text-lg flex items-center gap-2"><i class="fa-solid fa-database text-brand"></i> Il mio database</h3>
                         <p class="text-sm text-muted">Alimenti personalizzati</p>
                     </div>
-                    <button onclick="promptAddFood()" class="w-10 h-10 rounded-full bg-brand/10 text-brand flex items-center justify-center active:scale-90 transition" aria-label="Aggiungi alimento"><i class="fa-solid fa-plus"></i></button>
+                    <div class="flex gap-2">
+                        <button onclick="openScanner('db')" class="w-10 h-10 rounded-full bg-emerald-500/10 text-emerald-500 flex items-center justify-center active:scale-90 transition" aria-label="Scansiona codice a barre"><i class="fa-solid fa-barcode"></i></button>
+                        <button onclick="promptAddFood()" class="w-10 h-10 rounded-full bg-brand/10 text-brand flex items-center justify-center active:scale-90 transition" aria-label="Aggiungi alimento"><i class="fa-solid fa-plus"></i></button>
+                    </div>
                 </div>
                 <div id="foodList" class="space-y-2"></div>
             </div>
@@ -476,7 +483,8 @@
             </div>
             <div class="relative mb-3">
                 <i class="fa-solid fa-magnifying-glass absolute left-4 top-1/2 -translate-y-1/2 text-muted text-sm"></i>
-                <input type="search" id="pickerSearch" placeholder="Cerca alimento…" autocomplete="off" class="field !pl-10" oninput="renderPickerList()">
+                <input type="search" id="pickerSearch" placeholder="Cerca alimento…" autocomplete="off" class="field !pl-10 !pr-14" oninput="renderPickerList()">
+                <button type="button" onclick="openScanner('picker')" class="absolute right-1.5 top-1/2 -translate-y-1/2 w-10 h-10 rounded-xl bg-emerald-500/10 text-emerald-500 flex items-center justify-center active:scale-90 transition" aria-label="Scansiona codice a barre"><i class="fa-solid fa-barcode"></i></button>
             </div>
             <div id="pickerCats" class="flex gap-1.5 overflow-x-auto no-scrollbar mb-3 -mx-1 px-1"></div>
             <div id="pickerList" class="h-[34dvh] overflow-y-auto no-scrollbar rounded-2xl border border-line bg-inset p-1.5 space-y-1 mb-4"></div>
@@ -493,6 +501,78 @@
             <p id="pickerPreview" class="text-xs font-bold text-center text-muted mb-3 h-4"></p>
             <button type="submit" class="btn-primary !from-emerald-500 !to-emerald-600 !shadow-emerald-500/25"><i class="fa-solid fa-plus"></i> Inserisci</button>
         </form>
+    </div>
+
+    <!-- Condividi scheda -->
+    <div id="shareModal" class="modal hidden" onclick="if(event.target===this) closeModal(this.id)">
+        <div class="sheet">
+            <div class="sheet-handle"></div>
+            <div class="flex justify-between items-center mb-1">
+                <h3 class="text-xl font-extrabold">Condividi scheda</h3>
+                <button type="button" class="icon-btn -mr-2" onclick="closeModal('shareModal')" aria-label="Chiudi"><i class="fa-solid fa-xmark text-lg"></i></button>
+            </div>
+            <p id="shareSub" class="text-sm text-muted mb-4"></p>
+            <div class="bg-white rounded-3xl p-4 mx-auto w-full max-w-[17rem] aspect-square flex items-center justify-center border border-line mb-2">
+                <div id="shareQr" class="w-full h-full flex items-center justify-center text-slate-400 text-sm text-center"></div>
+            </div>
+            <p class="text-xs text-muted text-center mb-4">Inquadra il QR con la fotocamera di un altro telefono</p>
+            <div class="flex gap-2 mb-2">
+                <input id="shareLink" type="text" readonly class="field !py-2.5 text-xs font-mono flex-1 min-w-0" onclick="this.select()">
+                <button onclick="copyShareLink()" class="btn-soft px-4 text-sm !text-brand shrink-0"><i class="fa-regular fa-copy"></i> Copia</button>
+            </div>
+            <button id="shareNativeBtn" onclick="nativeShare()" class="btn-primary hidden"><i class="fa-solid fa-share-nodes"></i> Invia con…</button>
+            <p class="text-xs text-muted mt-4 ml-1"><i class="fa-solid fa-circle-info mr-1"></i> Vengono condivisi esercizi, serie e note. Lo storico dei tuoi log resta privato.</p>
+        </div>
+    </div>
+
+    <!-- Importa scheda (testo o link) -->
+    <div id="importModal" class="modal hidden" onclick="if(event.target===this) closeModal(this.id)">
+        <form class="sheet" onsubmit="event.preventDefault(); confirmImportText()">
+            <div class="sheet-handle"></div>
+            <div class="flex justify-between items-center mb-1">
+                <h3 class="text-xl font-extrabold">Importa scheda</h3>
+                <button type="button" class="icon-btn -mr-2" onclick="closeModal('importModal')" aria-label="Chiudi"><i class="fa-solid fa-xmark text-lg"></i></button>
+            </div>
+            <p class="text-sm text-muted mb-3">Incolla la scheda del tuo personal trainer, oppure un link di condivisione.</p>
+            <textarea id="importText" rows="7" class="field resize-none font-mono !text-sm" oninput="scheduleImportPreview()"
+                placeholder="Giorno A - Petto&#10;Panca piana 4x8 80kg&#10;Croci 3x12 14kg (rec 90&quot;)&#10;Panca inclinata 80x10, 85x8, 90x6&#10;Alzate laterali 3x12 10kg + Military 3x10 40kg&#10;&#10;Giorno B - Gambe&#10;Squat 5x5 100kg"></textarea>
+            <button type="button" onclick="showImportHelp()" class="text-xs font-bold text-brand mt-2 ml-1"><i class="fa-solid fa-circle-question mr-1"></i> Quali formati capisce?</button>
+            <div id="importHelp" class="hidden text-xs text-muted bg-inset border border-line rounded-2xl p-3 mt-2 space-y-1">
+                <p><b class="text-ink">4x8 80kg</b> · 4 serie da 8 con 80 kg</p>
+                <p><b class="text-ink">3 serie da 12</b> · anche in italiano</p>
+                <p><b class="text-ink">4x10/8/6/6</b> o <b class="text-ink">80/85/90 kg</b> · valori diversi per serie</p>
+                <p><b class="text-ink">80x10, 85x8, 90x6</b> · peso × ripetizioni di ogni serie</p>
+                <p><b class="text-ink">Esercizio A + Esercizio B</b> · superset</p>
+                <p><b class="text-ink">Giorno A / Scheda 1 / riga che finisce con ":"</b> · inizia una nuova scheda</p>
+                <p><b class="text-ink">(testo tra parentesi)</b> e <b class="text-ink">rec 90"</b> · diventano note</p>
+            </div>
+            <div id="importPreview" class="mt-4"></div>
+            <button id="importSubmit" type="submit" class="btn-primary mt-4" disabled><i class="fa-solid fa-file-import"></i> Importa</button>
+        </form>
+    </div>
+
+    <!-- Scanner codice a barre -->
+    <div id="scanModal" class="modal hidden" onclick="if(event.target===this) closeModal(this.id)">
+        <div class="sheet">
+            <div class="sheet-handle"></div>
+            <div class="flex justify-between items-center mb-3">
+                <h3 class="text-xl font-extrabold">Scansiona prodotto</h3>
+                <button type="button" class="icon-btn -mr-2" onclick="closeModal('scanModal')" aria-label="Chiudi"><i class="fa-solid fa-xmark text-lg"></i></button>
+            </div>
+            <div id="scanCameraBox" class="relative rounded-3xl overflow-hidden bg-black aspect-[4/3] mb-3">
+                <video id="scanVideo" class="w-full h-full object-cover" playsinline muted></video>
+                <div class="absolute inset-0 flex items-center justify-center pointer-events-none">
+                    <div class="w-3/4 h-2/5 border-2 border-white/80 rounded-2xl shadow-[0_0_0_999px_rgb(0_0_0/0.35)]"></div>
+                </div>
+                <p id="scanStatus" class="absolute bottom-2 inset-x-2 text-center text-xs font-bold text-white drop-shadow">Avvio fotocamera…</p>
+            </div>
+            <form class="flex gap-2 mb-3" onsubmit="event.preventDefault(); lookupBarcode($('scanManual').value)">
+                <input id="scanManual" type="text" inputmode="numeric" placeholder="Oppure scrivi il codice (es. 8076800195057)" class="field !py-2.5 !text-sm flex-1 min-w-0">
+                <button type="submit" class="btn-soft px-4 text-sm !text-emerald-500 shrink-0"><i class="fa-solid fa-magnifying-glass"></i></button>
+            </form>
+            <div id="scanResult"></div>
+            <p class="text-[11px] text-muted text-center mt-3">Dati nutrizionali da <b>Open Food Facts</b>, database libero e collaborativo.</p>
+        </div>
     </div>
 
     <!-- Copia giorno dieta -->
@@ -563,5 +643,7 @@
 
     <script src="js/foods.js"></script>
     <script src="js/app.js"></script>
+    <script src="js/share.js"></script>
+    <script src="js/scanner.js"></script>
 </body>
 </html>
