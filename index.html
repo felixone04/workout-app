@@ -1292,20 +1292,44 @@
         // App Boot
         loadData();
 
-        // Configurazione PWA per l'installazione su Mobile (Android & iOS) in un singolo file
+        // Configurazione PWA (Forza l'installazione NATIVA senza badge Google/Chrome)
         const setupPWA = () => {
-            const svgIcon = "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAxMDAgMTAwIj48cmVjdCB3aWR0aD0iMTAwIiBoZWlnaHQ9IjEwMCIgcng9IjIwIiBmaWxsPSIjNGY0NmU1Ii8+PHBhdGggZmlsbD0iI2ZmZiIgZD0iTTI1IDI1djUwaDE1VjI1SDI1em0zNSAwSDc1djUwSDYwVjI1em0tMjAgMjBoMTB2MTBINDBWNDV6Ii8+PC9zdmc+";
+            const canvas = document.createElement('canvas');
+            canvas.width = 512; canvas.height = 512;
+            const ctx = canvas.getContext('2d');
+            
+            // Disegna Sfondo (Indaco arrotondato)
+            ctx.fillStyle = '#4f46e5';
+            ctx.beginPath();
+            if(ctx.roundRect) { ctx.roundRect(0, 0, 512, 512, 100); } 
+            else { ctx.rect(0, 0, 512, 512); } // Fallback browser vecchi
+            ctx.fill();
+            
+            // Disegna Icona Pesi (Bianco)
+            ctx.fillStyle = '#ffffff';
+            ctx.fillRect(128, 128, 50, 256); // Disco SX grande
+            ctx.fillRect(78, 178, 50, 156);  // Disco SX piccolo
+            ctx.fillRect(178, 230, 156, 52); // Sbarra centrale
+            ctx.fillRect(334, 128, 50, 256); // Disco DX grande
+            ctx.fillRect(384, 178, 50, 156); // Disco DX piccolo
+
+            // Esporta in PNG Base64 (Richiesto da Chrome per l'installazione nativa pulita)
+            const iconPngUrl = canvas.toDataURL('image/png');
+
+            // Imposta icone nell'HTML
+            document.getElementById('dynamicFavicon').href = iconPngUrl;
+            document.getElementById('dynamicAppleIcon').href = iconPngUrl;
             
             const manifest = {
                 "name": "Workout",
                 "short_name": "Workout",
-                "start_url": window.location.pathname,
+                "start_url": window.location.pathname || "/",
                 "display": "standalone",
                 "background_color": "#f1f5f9",
                 "theme_color": "#f1f5f9",
                 "icons": [
-                    { "src": svgIcon, "sizes": "192x192", "type": "image/svg+xml" },
-                    { "src": svgIcon, "sizes": "512x512", "type": "image/svg+xml" }
+                    { "src": iconPngUrl, "sizes": "192x192", "type": "image/png", "purpose": "any maskable" },
+                    { "src": iconPngUrl, "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
                 ]
             };
             
@@ -1316,11 +1340,12 @@
             link.href = manifestUrl;
             document.head.appendChild(link);
 
+            // Registra Service Worker (Necessario per passare il test PWA del browser)
             if ('serviceWorker' in navigator) {
                 const swCode = `
                     self.addEventListener('install', (e) => self.skipWaiting());
                     self.addEventListener('activate', (e) => e.waitUntil(clients.claim()));
-                    self.addEventListener('fetch', (e) => {});
+                    self.addEventListener('fetch', (e) => { /* Vuoto per permettere offline check */ });
                 `;
                 const swBlob = new Blob([swCode], {type: 'application/javascript'});
                 const swUrl = URL.createObjectURL(swBlob);
