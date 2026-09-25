@@ -167,7 +167,33 @@
                 </div>
                 <button onclick="addWorkoutDay()" class="btn-soft px-4 py-2.5 text-sm text-brand"><i class="fa-solid fa-plus"></i> Scheda</button>
             </div>
+            <div id="weekStrip" class="mb-4"></div>
             <div id="workoutGrid" class="grid grid-cols-2 gap-3"></div>
+        </section>
+
+        <!-- CALENDARIO ALLENAMENTI -->
+        <section id="view-calendar" class="view hidden">
+            <div class="mb-4">
+                <p class="text-xs font-bold uppercase tracking-widest text-brand">Allenamento</p>
+                <h2 class="text-3xl font-extrabold tracking-tight">Calendario</h2>
+            </div>
+            <div id="calStats" class="grid grid-cols-3 gap-2 mb-4"></div>
+            <div class="card p-4 mb-4">
+                <div class="flex items-center justify-between mb-3">
+                    <button onclick="shiftCalMonth(-1)" class="icon-btn" aria-label="Mese precedente"><i class="fa-solid fa-chevron-left"></i></button>
+                    <h3 id="calMonthLabel" class="font-extrabold text-base capitalize"></h3>
+                    <button onclick="shiftCalMonth(1)" class="icon-btn" aria-label="Mese successivo"><i class="fa-solid fa-chevron-right"></i></button>
+                </div>
+                <div class="grid grid-cols-7 gap-1 mb-1 text-center text-[10px] font-bold uppercase tracking-wider text-muted">
+                    <span>L</span><span>M</span><span>M</span><span>G</span><span>V</span><span>S</span><span>D</span>
+                </div>
+                <div id="calGrid" class="grid grid-cols-7 gap-1"></div>
+                <div class="flex items-center justify-center gap-4 mt-3 text-[11px] font-semibold text-muted">
+                    <span class="flex items-center gap-1.5"><span class="w-3 h-3 rounded-md bg-brand"></span> Allenamento</span>
+                    <span class="flex items-center gap-1.5"><span class="w-3 h-3 rounded-md ring-2 ring-brand/50"></span> Oggi</span>
+                </div>
+            </div>
+            <div id="calDetail"></div>
         </section>
 
         <!-- DETTAGLIO SCHEDA -->
@@ -203,7 +229,8 @@
                 <p class="text-xs font-bold uppercase tracking-widest text-emerald-500">Dieta</p>
                 <h2 id="dietDayTitle" class="text-3xl font-extrabold tracking-tight"></h2>
             </div>
-            <div id="dietDayMacros" class="grid grid-cols-3 gap-2 mb-5"></div>
+            <div id="dietDayMacros" class="grid grid-cols-3 gap-2 mb-3"></div>
+            <button onclick="promptCopyDay()" class="btn-soft w-full py-3 text-sm mb-5"><i class="fa-solid fa-copy text-emerald-500"></i> Copia questo giorno su altri giorni</button>
             <div id="mealList" class="space-y-3"></div>
             <button onclick="addMeal()" class="mt-3 w-full border-2 border-dashed border-line text-muted hover:text-ink hover:border-muted/50 transition py-4 rounded-3xl text-sm font-bold"><i class="fa-solid fa-plus mr-2"></i>Aggiungi pasto</button>
         </section>
@@ -465,6 +492,30 @@
             </div>
             <p id="pickerPreview" class="text-xs font-bold text-center text-muted mb-3 h-4"></p>
             <button type="submit" class="btn-primary !from-emerald-500 !to-emerald-600 !shadow-emerald-500/25"><i class="fa-solid fa-plus"></i> Inserisci</button>
+        </form>
+    </div>
+
+    <!-- Copia giorno dieta -->
+    <div id="copyDayModal" class="modal hidden" onclick="if(event.target===this) closeModal(this.id)">
+        <form class="sheet" onsubmit="event.preventDefault(); confirmCopyDay()">
+            <div class="sheet-handle"></div>
+            <div class="flex justify-between items-center mb-1">
+                <h3 id="copyDayTitle" class="text-xl font-extrabold">Copia giorno</h3>
+                <button type="button" class="icon-btn -mr-2" onclick="closeModal('copyDayModal')" aria-label="Chiudi"><i class="fa-solid fa-xmark text-lg"></i></button>
+            </div>
+            <p id="copyDaySub" class="text-sm text-muted mb-4"></p>
+            <div class="flex items-center justify-between mb-2">
+                <p class="field-label !mb-0">Copia su</p>
+                <button type="button" onclick="toggleAllCopyDays()" id="copyAllBtn" class="text-xs font-bold text-emerald-500 mr-1">Seleziona tutti</button>
+            </div>
+            <div id="copyDayList" class="space-y-1.5 mb-4"></div>
+            <p class="field-label">Se il giorno ha già dei pasti</p>
+            <div class="seg-group mb-2">
+                <button type="button" id="copyModeReplace" class="seg active" onclick="setCopyMode('replace')">Sostituisci</button>
+                <button type="button" id="copyModeAppend" class="seg" onclick="setCopyMode('append')">Aggiungi in coda</button>
+            </div>
+            <p id="copyModeHint" class="text-xs text-muted mb-5 ml-1"></p>
+            <button id="copyDaySubmit" type="submit" class="btn-primary !from-emerald-500 !to-emerald-600 !shadow-emerald-500/25"><i class="fa-solid fa-copy"></i> Copia</button>
         </form>
     </div>
 

@@ -1,6 +1,6 @@
 'use strict';
 
-const APP_VERSION = '2.2.0';
+const APP_VERSION = '2.3.0';
 const STORE_KEY = 'workoutAppV1';
 const LEGACY_KEYS = ['mySigmaV3', 'mySigmaV2'];
 const SETTINGS_KEY = 'workoutAppSettings';
@@ -190,6 +190,7 @@ const VIEWS = {
     home: { nav: 'home', eyebrow: () => new Date().toLocaleDateString('it-IT', { weekday: 'long', day: 'numeric', month: 'long' }), title: () => 'Workout' },
     workout: { nav: 'workout', eyebrow: () => 'Allenamento', title: () => 'Schede', timer: true },
     workoutDay: { nav: 'workout', parent: 'workout', eyebrow: () => 'Scheda', title: () => state.workouts[nav.workoutDay]?.name || '', timer: true },
+    calendar: { nav: 'workout', parent: 'workout', eyebrow: () => 'Allenamento', title: () => 'Calendario' },
     diet: { nav: 'diet', eyebrow: () => 'Dieta', title: () => 'Settimana' },
     dietDay: { nav: 'diet', parent: 'diet', eyebrow: () => 'Dieta', title: () => DAYS[nav.dietDay] || '' },
     db: { nav: 'db', eyebrow: () => 'Strumenti', title: () => 'Conversioni' }
@@ -245,7 +246,7 @@ function render() {
     document.body.classList.toggle('with-timer', !!v.timer);
 
     ({
-        home: renderHome, workout: renderWorkoutGrid, workoutDay: renderWorkoutDay,
+        home: renderHome, workout: renderWorkoutGrid, workoutDay: renderWorkoutDay, calendar: renderCalendar,
         diet: renderDietGrid, dietDay: renderDietDay, db: renderDb
     })[nav.view]();
 }
@@ -436,7 +437,163 @@ function renderHome() {
 }
 
 // ================= ALLENAMENTO =================
+// ---- Calendario allenamenti ----
+// I giorni di allenamento si ricavano dai log delle sessioni (campo ts).
+const dayKey = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+const keyToDate = (k) => { const [y, m, d] = k.split('-').map(Number); return new Date(y, m - 1, d); };
+const weekStart = (d) => { const x = new Date(d); x.setHours(0, 0, 0, 0); x.setDate(x.getDate() - ((x.getDay() + 6) % 7)); return x; };
+
+/** Map giorno → Map(indice scheda → { name, items: [{ name, sets, ts }] }) */
+function trainingDays() {
+    const days = new Map();
+    state.workouts.forEach((w, wi) => w.exercises.forEach((ex) => {
+        const add = (h, which) => {
+            if (!h.ts) return;
+            const k = dayKey(new Date(h.ts));
+            if (!days.has(k)) days.set(k, new Map());
+            const dm = days.get(k);
+            if (!dm.has(wi)) dm.set(wi, { name: w.name, items: [] });
+            const name = which === 2 ? (ex.subName2 || 'Esercizio 2') : ex.type === 'superset' ? (ex.subName1 || ex.name) : ex.name;
+            dm.get(wi).items.push({ name, sets: setsOf(h), ts: h.ts, which });
+        };
+        ex.history.forEach((h) => add(h, 1));
+        ex.history2.forEach((h) => add(h, 2));
+    }));
+    return days;
+}
+
+function trainingStats(days) {
+    const now = new Date();
+    const thisWeek = dayKey(weekStart(now));
+    const weeks = new Set([...days.keys()].map((k) => dayKey(weekStart(keyToDate(k)))));
+    let weekCount = 0;
+    days.forEach((_, k) => { if (dayKey(weekStart(keyToDate(k))) === thisWeek) weekCount++; });
+    // settimane consecutive con almeno un allenamento (la settimana in corso non interrompe la serie finché non finisce)
+    let streak = 0;
+    const w = weekStart(now);
+    if (!weeks.has(dayKey(w))) w.setDate(w.getDate() - 7);
+    while (weeks.has(dayKey(w))) { streak++; w.setDate(w.getDate() - 7); }
+    return { weekCount, streak };
+}
+
+function renderWeekStrip() {
+    const days = trainingDays();
+    const start = weekStart(new Date());
+    const today = dayKey(new Date());
+    const labels = ['L', 'M', 'M', 'G', 'V', 'S', 'D'];
+    let count = 0;
+    const cells = labels.map((l, i) => {
+        const d = new Date(start); d.setDate(d.getDate() + i);
+        const k = dayKey(d);
+        const done = days.has(k);
+        if (done) count++;
+        return `
+            <div class="flex flex-col items-center gap-1">
+                <span class="text-[10px] font-bold text-muted">${l}</span>
+                <span class="w-8 h-8 rounded-full flex items-center justify-center text-xs font-extrabold ${done ? 'bg-brand text-white' : 'bg-inset text-muted'} ${k === today ? 'ring-2 ring-brand/50 ring-offset-2 ring-offset-surface' : ''}">${done ? '<i class="fa-solid fa-check text-[10px]"></i>' : d.getDate()}</span>
+            </div>`;
+    }).join('');
+    $('weekStrip').innerHTML = `
+        <button onclick="openCalendar()" class="card w-full p-4 text-left active:scale-[0.99] transition">
+            <div class="flex items-center justify-between mb-3">
+                <div>
+                    <p class="font-extrabold text-sm">Questa settimana</p>
+                    <p class="text-xs text-muted font-semibold">${count} ${count === 1 ? 'allenamento' : 'allenamenti'}</p>
+                </div>
+                <span class="text-xs font-bold text-brand flex items-center gap-1.5"><i class="fa-regular fa-calendar"></i> Calendario <i class="fa-solid fa-chevron-right text-[10px]"></i></span>
+            </div>
+            <div class="grid grid-cols-7">${cells}</div>
+        </button>`;
+}
+
+const cal = { year: null, month: null, selected: null };
+
+function openCalendar() {
+    const now = new Date();
+    cal.year = now.getFullYear();
+    cal.month = now.getMonth();
+    cal.selected = dayKey(now);
+    go('calendar');
+}
+
+function shiftCalMonth(delta) {
+    const d = new Date(cal.year, cal.month + delta, 1);
+    cal.year = d.getFullYear();
+    cal.month = d.getMonth();
+    renderCalendar();
+}
+
+function selectCalDay(k) {
+    cal.selected = k;
+    renderCalendar();
+}
+
+function renderCalendar() {
+    if (cal.year === null) { const n = new Date(); cal.year = n.getFullYear(); cal.month = n.getMonth(); cal.selected = dayKey(n); }
+    const days = trainingDays();
+    const { weekCount, streak } = trainingStats(days);
+    const today = dayKey(new Date());
+    const first = new Date(cal.year, cal.month, 1);
+    const nDays = new Date(cal.year, cal.month + 1, 0).getDate();
+    const offset = (first.getDay() + 6) % 7;
+    let monthCount = 0;
+    for (let d = 1; d <= nDays; d++) if (days.has(dayKey(new Date(cal.year, cal.month, d)))) monthCount++;
+
+    const stat = (value, label) => `
+        <div class="card py-3 text-center">
+            <p class="text-2xl font-extrabold text-brand leading-none">${value}</p>
+            <p class="text-[10px] font-bold uppercase tracking-wider text-muted mt-1.5 leading-tight">${label}</p>
+        </div>`;
+    $('calStats').innerHTML = stat(weekCount, 'Questa<br>settimana') + stat(monthCount, 'Nel mese<br>visualizzato') + stat(streak, 'Settimane<br>di fila');
+
+    $('calMonthLabel').textContent = first.toLocaleDateString('it-IT', { month: 'long', year: 'numeric' });
+    let cells = '<span></span>'.repeat(offset);
+    for (let d = 1; d <= nDays; d++) {
+        const k = dayKey(new Date(cal.year, cal.month, d));
+        const done = days.has(k);
+        const sel = k === cal.selected;
+        const cls = done ? 'bg-brand text-white shadow-md shadow-brand/25' : k > today ? 'text-muted/50' : 'text-ink hover:bg-inset';
+        cells += `
+            <button onclick="selectCalDay('${k}')" class="aspect-square rounded-xl text-sm font-bold flex items-center justify-center transition active:scale-90 ${cls} ${k === today ? 'ring-2 ring-brand/50' : ''} ${sel ? 'ring-2 ring-offset-2 ring-offset-surface !ring-accent' : ''}">${d}</button>`;
+    }
+    $('calGrid').innerHTML = cells;
+
+    const selDate = keyToDate(cal.selected);
+    const title = selDate.toLocaleDateString('it-IT', { weekday: 'long', day: 'numeric', month: 'long' });
+    const dm = days.get(cal.selected);
+    if (!dm) {
+        $('calDetail').innerHTML = `
+            <div class="card border-dashed p-6 text-center">
+                <p class="font-extrabold capitalize mb-1">${esc(title)}</p>
+                <p class="text-sm text-muted">Nessun allenamento registrato in questo giorno.</p>
+            </div>`;
+        return;
+    }
+    $('calDetail').innerHTML = `
+        <p class="font-extrabold capitalize mb-2 ml-1">${esc(title)}</p>
+        <div class="space-y-3">${[...dm.entries()].map(([wi, g]) => `
+            <article class="card p-4">
+                <button onclick="go('workoutDay', { workoutDay: ${wi} })" class="w-full flex items-center gap-3 mb-3 text-left">
+                    <div class="w-9 h-9 rounded-xl bg-brand/10 text-brand flex items-center justify-center font-extrabold text-sm shrink-0">${esc(String.fromCharCode(65 + (wi % 26)))}</div>
+                    <div class="flex-1 min-w-0">
+                        <h4 class="font-extrabold leading-tight truncate">${esc(g.name)}</h4>
+                        <p class="text-xs text-muted font-semibold">${g.items.length} ${g.items.length === 1 ? 'esercizio registrato' : 'esercizi registrati'}</p>
+                    </div>
+                    <i class="fa-solid fa-chevron-right text-muted text-xs"></i>
+                </button>
+                <div class="bg-inset border border-line rounded-2xl px-3 py-1">
+                    ${g.items.map((it) => `
+                        <div class="py-2 border-b border-line/70 last:border-0">
+                            <p class="text-sm font-bold ${it.which === 2 ? 'text-accent' : ''}">${esc(it.name)}</p>
+                            <div class="flex flex-wrap gap-1 mt-1">${setPills(it.sets)}</div>
+                        </div>`).join('')}
+                </div>
+            </article>`).join('')}
+        </div>`;
+}
+
 function renderWorkoutGrid() {
+    if (state.workouts.length) renderWeekStrip(); else $('weekStrip').innerHTML = '';
     const c = $('workoutGrid');
     if (!state.workouts.length) {
         c.innerHTML = `
@@ -991,6 +1148,82 @@ function renderDietDay() {
 }
 
 const currentMeals = () => state.weeklyDiet[DAYS[nav.dietDay]];
+
+// ---- Copia giorno ----
+const copyDay = { targets: new Set(), mode: 'replace' };
+
+function promptCopyDay() {
+    const src = nav.dietDay;
+    const meals = currentMeals();
+    if (!meals.length) { toast('Nessun pasto da copiare', 'fa-triangle-exclamation'); return; }
+    copyDay.targets = new Set();
+    $('copyDayTitle').textContent = `Copia ${DAYS[src]}`;
+    const nItems = meals.reduce((a, m) => a + m.items.length, 0);
+    $('copyDaySub').textContent = `${meals.length} ${meals.length === 1 ? 'pasto' : 'pasti'} · ${nItems} ${nItems === 1 ? 'alimento' : 'alimenti'}`;
+    setCopyMode(copyDay.mode);
+    openModal('copyDayModal');
+}
+
+function renderCopyDayList() {
+    const src = nav.dietDay;
+    $('copyDayList').innerHTML = DAYS.map((day, i) => {
+        if (i === src) return '';
+        const on = copyDay.targets.has(i);
+        const n = state.weeklyDiet[day].length;
+        return `
+            <button type="button" onclick="toggleCopyDay(${i})" class="w-full flex items-center gap-3 px-3 py-2.5 rounded-2xl border transition ${on ? 'bg-emerald-500/10 border-emerald-500/40' : 'bg-inset border-line'}">
+                <span class="w-6 h-6 rounded-lg flex items-center justify-center text-xs shrink-0 ${on ? 'bg-emerald-500 text-white' : 'border-2 border-line'}">${on ? '<i class="fa-solid fa-check"></i>' : ''}</span>
+                <span class="flex-1 text-left font-bold text-sm">${day}</span>
+                <span class="text-xs font-semibold ${n ? 'text-amber-500' : 'text-muted'}">${n ? `${n} ${n === 1 ? 'pasto' : 'pasti'}` : 'vuoto'}</span>
+            </button>`;
+    }).join('');
+    const count = copyDay.targets.size;
+    $('copyAllBtn').textContent = count === DAYS.length - 1 ? 'Deseleziona tutti' : 'Seleziona tutti';
+    const btn = $('copyDaySubmit');
+    btn.disabled = !count;
+    btn.innerHTML = `<i class="fa-solid fa-copy"></i> ${count ? `Copia su ${count} ${count === 1 ? 'giorno' : 'giorni'}` : 'Scegli almeno un giorno'}`;
+}
+
+function toggleCopyDay(i) {
+    if (copyDay.targets.has(i)) copyDay.targets.delete(i); else copyDay.targets.add(i);
+    renderCopyDayList();
+}
+
+function toggleAllCopyDays() {
+    const all = copyDay.targets.size === DAYS.length - 1;
+    copyDay.targets = new Set(all ? [] : DAYS.map((_, i) => i).filter((i) => i !== nav.dietDay));
+    renderCopyDayList();
+}
+
+function setCopyMode(mode) {
+    copyDay.mode = mode;
+    $('copyModeReplace').classList.toggle('active', mode === 'replace');
+    $('copyModeAppend').classList.toggle('active', mode === 'append');
+    $('copyModeHint').textContent = mode === 'replace'
+        ? 'I pasti già presenti nei giorni scelti verranno eliminati e sostituiti.'
+        : 'I pasti copiati verranno aggiunti dopo quelli già presenti.';
+    renderCopyDayList();
+}
+
+async function confirmCopyDay() {
+    const targets = [...copyDay.targets].sort();
+    if (!targets.length) return;
+    const src = currentMeals();
+    const overwritten = targets.filter((i) => state.weeklyDiet[DAYS[i]].length);
+    if (copyDay.mode === 'replace' && overwritten.length) {
+        const names = overwritten.map((i) => DAYS[i]).join(', ');
+        if (!(await confirmDialog('Sostituire i pasti?', `I pasti di ${names} verranno eliminati e sostituiti con quelli di ${DAYS[nav.dietDay]}.`, 'Sostituisci'))) return;
+    }
+    targets.forEach((i) => {
+        const copy = JSON.parse(JSON.stringify(src));
+        const day = DAYS[i];
+        state.weeklyDiet[day] = copyDay.mode === 'replace' ? copy : [...state.weeklyDiet[day], ...copy];
+    });
+    persist();
+    await closeModal('copyDayModal');
+    toast(`Copiato su ${targets.length} ${targets.length === 1 ? 'giorno' : 'giorni'}`);
+    render();
+}
 
 async function addMeal() {
     const n = currentMeals().length;
