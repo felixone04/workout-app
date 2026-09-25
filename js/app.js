@@ -1,6 +1,6 @@
 'use strict';
 
-const APP_VERSION = '2.6.1';
+const APP_VERSION = '2.6.2';
 const STORE_KEY = 'workoutAppV1';
 const LEGACY_KEYS = ['mySigmaV3', 'mySigmaV2'];
 const SETTINGS_KEY = 'workoutAppSettings';
@@ -439,15 +439,6 @@ function renderHome() {
                 <i class="fa-solid fa-chevron-right text-muted"></i>
             </div>
             <div class="grid grid-cols-3 gap-2">${macroTiles(m, 'sm')}</div>
-        </button>
-
-        <button onclick="navTo('db')" class="card w-full text-left p-5 active:scale-[0.98] transition flex items-center gap-3">
-            <div class="w-12 h-12 rounded-2xl bg-accent/10 text-accent flex items-center justify-center text-xl"><i class="fa-solid fa-scale-balanced"></i></div>
-            <div class="flex-1">
-                <h3 class="text-lg font-extrabold leading-tight">Conversioni</h3>
-                <p class="text-sm text-muted font-medium">Equivalenze tra alimenti e database</p>
-            </div>
-            <i class="fa-solid fa-chevron-right text-muted"></i>
         </button>
     `;
 }
