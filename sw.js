@@ -1,7 +1,7 @@
 // Service worker: l'app funziona anche offline (es. in palestra senza campo).
 // File dell'app: prima la rete (così gli aggiornamenti arrivano subito), poi la cache.
 // Librerie esterne (Tailwind, icone, font): prima la cache, aggiornata in background.
-const CACHE = 'workout-v2.6.2';
+const CACHE = 'workout-v2.6.3';
 const APP_SHELL = [
   './',
   './index.html',
@@ -15,7 +15,12 @@ const APP_SHELL = [
 ];
 
 self.addEventListener('install', (event) => {
-  event.waitUntil(caches.open(CACHE).then((c) => c.addAll(APP_SHELL)).then(() => self.skipWaiting()));
+  // cache: 'reload' = scarica i file freschi dal server, non dalla cache HTTP del browser
+  event.waitUntil(
+    caches.open(CACHE)
+      .then((c) => c.addAll(APP_SHELL.map((u) => new Request(u, { cache: 'reload' }))))
+      .then(() => self.skipWaiting())
+  );
 });
 
 self.addEventListener('activate', (event) => {
@@ -32,8 +37,10 @@ self.addEventListener('fetch', (event) => {
   const url = new URL(req.url);
 
   if (url.origin === self.location.origin) {
+    // 'no-cache': chiede sempre al server se il file è cambiato (GitHub Pages altrimenti
+    // lascia usare la copia in cache per 10 minuti e gli aggiornamenti arrivano in ritardo)
     event.respondWith(
-      fetch(req)
+      fetch(req, { cache: 'no-cache' })
         .then((res) => {
           if (res.ok) { const copy = res.clone(); caches.open(CACHE).then((c) => c.put(req, copy)); }
           return res;

@@ -1,6 +1,6 @@
 'use strict';
 
-const APP_VERSION = '2.6.2';
+const APP_VERSION = '2.6.3';
 const STORE_KEY = 'workoutAppV1';
 const LEGACY_KEYS = ['mySigmaV3', 'mySigmaV2'];
 const SETTINGS_KEY = 'workoutAppSettings';
@@ -1884,5 +1884,21 @@ setTimerMode(settings.timerMode === 'interval' ? 'interval' : 'free');
 })();
 
 if ('serviceWorker' in navigator && location.protocol === 'https:') {
-    window.addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(() => {}));
+    // Aggiornamenti automatici: quando è pubblicata una nuova versione il nuovo service worker
+    // prende il controllo e la pagina si ricarica da sola (solo se ne esisteva già uno prima).
+    const hadController = !!navigator.serviceWorker.controller;
+    let reloading = false;
+    navigator.serviceWorker.addEventListener('controllerchange', () => {
+        if (!hadController || reloading || modalStack.length) return; // non interrompere chi sta compilando
+        reloading = true;
+        location.reload();
+    });
+    window.addEventListener('load', () => {
+        navigator.serviceWorker.register('sw.js', { updateViaCache: 'none' }).then((reg) => {
+            // controlla se c'è una nuova versione ogni volta che l'app torna in primo piano
+            document.addEventListener('visibilitychange', () => {
+                if (document.visibilityState === 'visible') reg.update().catch(() => {});
+            });
+        }).catch(() => {});
+    });
 }
