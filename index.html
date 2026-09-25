@@ -300,10 +300,133 @@
         <div id="addExBox" class="bg-bgSurface border-t border-x sm:border-b border-borderBase rounded-t-[2rem] sm:rounded-3xl p-6 w-full max-w-sm translate-y-full sm:translate-y-0 transition-transform max-h-[90vh] overflow-y-auto no-scrollbar shadow-2xl">
             <div class="flex justify-between items-center mb-5">
                 <h3 id="addExTitle" class="text-xl font-bold text-textMain">Nuovo Esercizio</h3>
-    <!-- Add Food Modal -->
-    <div id="addFoodModal" class="fixed inset-0 modal-overlay hidden z-50 flex items-end justify-center p-0 opacity-0 transition-opacity">
-        <div id="addFoodBox" class="bg-bgSurface border-t border-borderBase rounded-t-[2rem] p-6 w-full max-w-sm translate-y-full transition-transform shadow-2xl">
-            <h3 class="text-xl font-bold mb-5 text-textMain">Nuovo Alimento DB</h3>
+                <button onclick="closeModal('addExModal')"><i class="fa-solid fa-xmark text-xl text-textMuted hover:text-textMain"></i></button>
+            </div>
+            
+            <input type="hidden" id="exDayIdx">
+            <input type="hidden" id="exEditIdx">
+            <input type="hidden" id="exType" value="classic">
+
+            <div class="flex gap-4 mb-4 bg-bgBase p-1.5 rounded-xl border border-borderBase shadow-inner">
+                <button id="typeClassic" onclick="setExType('classic')" class="flex-1 py-2 text-xs font-bold bg-bgSurface border border-borderBase text-textMain shadow-sm rounded-lg transition-all">Classico</button>
+                <button id="typeSuper" onclick="setExType('superset')" class="flex-1 py-2 text-xs font-bold text-textMuted rounded-lg hover:text-textMain transition-all">Superset</button>
+            </div>
+
+            <div class="space-y-3 mb-6">
+                <div>
+                    <label id="labelEx1" class="text-[10px] text-brand uppercase font-bold tracking-wider mb-1 hidden">Esercizio 1</label>
+                    <input type="text" id="exName" placeholder="Nome (es. Panca Piana)" class="w-full bg-bgBase border border-borderBase rounded-2xl px-4 py-3 text-sm font-semibold placeholder-textMuted focus:border-brand shadow-inner">
+                    <input type="text" id="exSubName1" placeholder="Variante (opzionale)" class="w-full bg-bgBase border border-borderBase rounded-2xl px-4 py-3 text-sm font-semibold placeholder-textMuted focus:border-brand mt-2 hidden shadow-inner">
+                </div>
+                
+                <div id="supersetFields" class="hidden border-t border-borderBase pt-3">
+                    <label class="text-[10px] text-brandAccent uppercase font-bold tracking-wider mb-1 block">Esercizio 2</label>
+                    <input type="text" id="exSubName2" placeholder="Nome (es. Croci ai cavi)" class="w-full bg-bgBase border border-borderBase rounded-2xl px-4 py-3 text-sm font-semibold placeholder-textMuted focus:border-brandAccent shadow-inner">
+                    
+                    <div class="flex gap-2 mt-2">
+                        <input type="number" id="exReps2" placeholder="Reps 2" class="w-1/2 bg-bgBase border border-borderBase rounded-2xl px-3 py-3 text-sm font-semibold text-center placeholder-textMuted focus:border-brandAccent shadow-inner">
+                        <input type="number" id="exWeight2" placeholder="Kg 2" class="w-1/2 bg-bgBase border border-borderBase rounded-2xl px-3 py-3 text-sm font-semibold text-center placeholder-textMuted focus:border-brandAccent shadow-inner">
+                    </div>
+                </div>
+                
+                <div class="flex gap-2">
+                    <input type="number" id="exSets" placeholder="Serie" class="w-1/3 bg-bgBase border border-borderBase rounded-2xl px-3 py-3 text-sm font-semibold text-center placeholder-textMuted focus:border-brand shadow-inner">
+                    <input type="number" id="exReps1" placeholder="Reps 1" class="w-1/3 bg-bgBase border border-borderBase rounded-2xl px-3 py-3 text-sm font-semibold text-center placeholder-textMuted focus:border-brand shadow-inner">
+                    <input type="number" id="exWeight1" placeholder="Kg 1" class="w-1/3 bg-bgBase border border-borderBase rounded-2xl px-3 py-3 text-sm font-semibold text-center placeholder-textMuted focus:border-brand shadow-inner">
+                </div>
+
+                <textarea id="exDesc" placeholder="Note (opzionale)" rows="2" class="w-full bg-bgBase border border-borderBase rounded-2xl px-4 py-3 text-sm font-semibold placeholder-textMuted focus:border-brand shadow-inner resize-none"></textarea>
+            </div>
+            
+            <button onclick="saveExercise()" class="w-full bg-gradient-to-r from-brand to-brandAccent text-white py-4 rounded-2xl font-bold shadow-[0_10px_20px_rgba(79,70,229,0.25)] active:scale-95 transition-transform">Salva Esercizio</button>
+        </div>
+    </div>
+
+    <!-- Log Session Modal -->
+    <div id="logSessionModal" class="fixed inset-0 modal-overlay hidden z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 opacity-0 transition-opacity">
+        <div id="logSessionBox" class="bg-bgSurface border-t border-x sm:border-b border-borderBase rounded-t-[2rem] sm:rounded-3xl p-6 w-full max-w-sm translate-y-full sm:translate-y-0 transition-transform shadow-2xl">
+            <div class="flex justify-between items-center mb-5">
+                <h3 class="text-xl font-bold text-textMain">Salva Sessione</h3>
+                <button onclick="closeModal('logSessionModal')"><i class="fa-solid fa-xmark text-xl text-textMuted hover:text-textMain"></i></button>
+            </div>
+            <input type="hidden" id="logDayIdx">
+            <input type="hidden" id="logExIdx">
+            
+            <div class="space-y-4 mb-6">
+                <div>
+                    <p id="logTitle1" class="text-sm font-bold text-brand mb-2"><i class="fa-solid fa-dumbbell"></i> Esercizio</p>
+                    <div class="flex gap-2">
+                        <input type="number" id="logWeight" placeholder="Peso (Kg)" class="w-1/2 bg-bgBase border border-borderBase rounded-2xl px-4 py-3.5 text-sm font-semibold placeholder-textMuted focus:border-brand shadow-inner text-center">
+                        <input type="number" id="logReps" placeholder="Ripetizioni" class="w-1/2 bg-bgBase border border-borderBase rounded-2xl px-4 py-3.5 text-sm font-semibold placeholder-textMuted focus:border-brand shadow-inner text-center">
+                    </div>
+                </div>
+                
+                <div id="logSupersetGroup" class="hidden border-t border-borderBase pt-4">
+                    <p id="logTitle2" class="text-sm font-bold text-brandAccent mb-2"><i class="fa-solid fa-dumbbell"></i> Esercizio 2</p>
+                    <div class="flex gap-2">
+                        <input type="number" id="logWeight2" placeholder="Peso (Kg)" class="w-1/2 bg-bgBase border border-borderBase rounded-2xl px-4 py-3.5 text-sm font-semibold placeholder-textMuted focus:border-brandAccent shadow-inner text-center">
+                        <input type="number" id="logReps2" placeholder="Ripetizioni" class="w-1/2 bg-bgBase border border-borderBase rounded-2xl px-4 py-3.5 text-sm font-semibold placeholder-textMuted focus:border-brandAccent shadow-inner text-center">
+                    </div>
+                </div>
+            </div>
+            
+            <button onclick="confirmLogSession()" class="w-full bg-gradient-to-r from-brand to-brandAccent text-white py-4 rounded-2xl font-bold shadow-[0_10px_20px_rgba(79,70,229,0.25)] active:scale-95 transition-transform">Salva nel Diario</button>
+        </div>
+    </div>
+
+    <!-- Add Meal Modal -->
+    <div id="addMealModal" class="fixed inset-0 modal-overlay hidden z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 opacity-0 transition-opacity">
+        <div id="addMealBox" class="bg-bgSurface border-t border-x sm:border-b border-borderBase rounded-t-[2rem] sm:rounded-3xl p-6 w-full max-w-sm translate-y-full sm:translate-y-0 transition-transform shadow-2xl">
+            <div class="flex justify-between items-center mb-6">
+                <h3 class="text-xl font-bold text-textMain">Nuovo Pasto</h3>
+                <button onclick="closeModal('addMealModal')"><i class="fa-solid fa-xmark text-xl text-textMuted hover:text-textMain"></i></button>
+            </div>
+            <input type="hidden" id="addMealDay">
+            <input type="text" id="addMealNameInput" placeholder="Es. Colazione, Spuntino..." class="w-full bg-bgBase border border-borderBase rounded-2xl px-4 py-4 text-sm font-semibold mb-6 placeholder-textMuted focus:border-emerald-500 shadow-inner">
+            <button onclick="confirmAddMeal()" class="w-full bg-emerald-500 text-white py-4 rounded-2xl font-bold shadow-[0_10px_20px_rgba(16,185,129,0.25)] active:scale-95 transition-transform">Aggiungi Pasto</button>
+        </div>
+    </div>
+
+    <!-- Add Diet Item Modal -->
+    <div id="addDietItemModal" class="fixed inset-0 modal-overlay hidden z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 opacity-0 transition-opacity">
+        <div id="addDietItemBox" class="bg-bgSurface border-t border-x sm:border-b border-borderBase rounded-t-[2rem] sm:rounded-3xl p-6 w-full max-w-sm translate-y-full sm:translate-y-0 transition-transform shadow-2xl">
+            <div class="flex justify-between items-center mb-6">
+                <h3 class="text-xl font-bold text-textMain">Nuovo Alimento</h3>
+                <button onclick="closeModal('addDietItemModal')"><i class="fa-solid fa-xmark text-xl text-textMuted hover:text-textMain"></i></button>
+            </div>
+            <input type="hidden" id="itemDayIdx">
+            <input type="hidden" id="itemMealIdx">
+            <div class="space-y-4 mb-6">
+                <select id="itemFoodSelect" class="w-full bg-bgBase border border-borderBase rounded-2xl px-4 py-3.5 text-sm font-semibold focus:border-emerald-500 shadow-inner max-w-full truncate overflow-hidden"></select>
+                <input type="number" id="itemGramsInput" placeholder="Grammi (es. 100)" class="w-full bg-bgBase border border-borderBase rounded-2xl px-4 py-3.5 text-sm font-semibold placeholder-textMuted focus:border-emerald-500 shadow-inner">
+            </div>
+            <button onclick="confirmAddDietItem()" class="w-full bg-emerald-500 text-white py-4 rounded-2xl font-bold shadow-[0_10px_20px_rgba(16,185,129,0.25)] active:scale-95 transition-transform">Inserisci Alimento</button>
+        </div>
+    </div>
+
+    <!-- Swap Food Modal -->
+    <div id="swapFoodModal" class="fixed inset-0 modal-overlay hidden z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 opacity-0 transition-opacity">
+        <div id="swapFoodBox" class="bg-bgSurface border-t border-x sm:border-b border-borderBase rounded-t-[2rem] sm:rounded-3xl p-6 w-full max-w-sm translate-y-full sm:translate-y-0 transition-transform max-h-[90vh] overflow-y-auto no-scrollbar shadow-2xl flex flex-col">
+            <div class="flex justify-between items-center mb-5 shrink-0">
+                <h3 class="text-xl font-bold text-textMain">Alternative</h3>
+                <button onclick="closeModal('swapFoodModal')"><i class="fa-solid fa-xmark text-xl text-textMuted hover:text-textMain"></i></button>
+            </div>
+            <div id="swapFoodInfo" class="bg-brand/10 border border-brand/20 p-4 rounded-2xl mb-4 text-center shrink-0 shadow-inner">
+                <!-- Populated dynamically -->
+            </div>
+            <div id="swapAlternativesList" class="space-y-2 overflow-y-auto flex-grow no-scrollbar pb-4">
+                <!-- Populated dynamically -->
+            </div>
+        </div>
+    </div>
+
+    <!-- Add Food Modal (Custom DB) -->
+    <div id="addFoodModal" class="fixed inset-0 modal-overlay hidden z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 opacity-0 transition-opacity">
+        <div id="addFoodBox" class="bg-bgSurface border-t border-x sm:border-b border-borderBase rounded-t-[2rem] sm:rounded-3xl p-6 w-full max-w-sm translate-y-full sm:translate-y-0 transition-transform shadow-2xl">
+            <div class="flex justify-between items-center mb-5">
+                <h3 class="text-xl font-bold text-textMain">Nuovo Alimento DB</h3>
+                <button onclick="closeModal('addFoodModal')"><i class="fa-solid fa-xmark text-xl text-textMuted hover:text-textMain"></i></button>
+            </div>
             <div class="space-y-4 mb-6">
                 <input type="text" id="dbFoodName" placeholder="Nome alimento (es. Petto di Pollo)" class="w-full bg-bgBase border border-borderBase rounded-2xl px-4 py-3.5 text-sm font-semibold placeholder-textMuted focus:border-brand shadow-inner">
                 <select id="dbFoodCat" class="w-full bg-bgBase border border-borderBase rounded-2xl px-4 py-3.5 text-sm font-semibold focus:border-brand shadow-inner">
@@ -315,7 +438,6 @@
                 <input type="number" id="dbFoodMacro" placeholder="Grammi del macro principale (per 100g)" class="w-full bg-bgBase border border-borderBase rounded-2xl px-4 py-3.5 text-sm font-semibold placeholder-textMuted focus:border-brand shadow-inner">
             </div>
             <button onclick="saveDbFood()" class="w-full bg-gradient-to-r from-brand to-brandAccent text-white py-4 rounded-2xl font-bold shadow-[0_10px_20px_rgba(79,70,229,0.25)] active:scale-95 transition-transform">Salva nel Database</button>
-            <button onclick="closeModal('addFoodModal')" class="w-full mt-3 py-3 font-bold text-textMuted hover:text-textMain">Annulla</button>
         </div>
     </div>
 
