@@ -1,6 +1,6 @@
 'use strict';
 
-const APP_VERSION = '2.5.0';
+const APP_VERSION = '2.6.0';
 const STORE_KEY = 'workoutAppV1';
 const LEGACY_KEYS = ['mySigmaV3', 'mySigmaV2'];
 const SETTINGS_KEY = 'workoutAppSettings';
@@ -411,6 +411,7 @@ function renderHome() {
     const greet = hour < 12 ? 'Buongiorno' : hour < 18 ? 'Buon pomeriggio' : 'Buonasera';
 
     $('view-home').innerHTML = `
+        ${installCardHtml()}
         <h2 class="text-3xl font-extrabold tracking-tight mb-1">${greet}</h2>
         <p class="text-muted font-medium mb-6">Pronto per la sessione di oggi?</p>
 
@@ -1518,6 +1519,7 @@ async function deleteDbFood(i) {
 function openSettings() {
     applyTheme();
     $('appVersion').textContent = `Workout v${APP_VERSION}`;
+    renderInstallBox();
     openModal('settingsModal');
 }
 
@@ -1779,6 +1781,101 @@ function updateTimerUI() {
     btn.classList.toggle('shadow-brand/40', !T.running);
     btn.classList.toggle('bg-amber-500', T.running);
     btn.classList.toggle('shadow-amber-500/40', T.running);
+}
+
+// ================= INSTALLAZIONE APP =================
+// Su Android l'icona senza logo si ottiene solo con l'installazione vera di Chrome ("Installa app").
+// "Aggiungi a schermata Home" dal browser dell'app Google (o di Facebook, Instagram…) crea invece
+// un semplice collegamento con il logo del browser sopra l'icona.
+let installPrompt = null;
+const UA = navigator.userAgent;
+const IS_ANDROID = /Android/i.test(UA);
+const IS_IOS = /iPhone|iPad|iPod/i.test(UA) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+const IS_IN_APP_BROWSER = /GSA\/|FBAN|FBAV|Instagram|Line\/|MicroMessenger|; wv\)/i.test(UA);
+const isStandalone = () => window.matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
+
+window.addEventListener('beforeinstallprompt', (e) => {
+    e.preventDefault();
+    installPrompt = e;
+    refreshInstallUI();
+});
+window.addEventListener('appinstalled', () => {
+    installPrompt = null;
+    toast('App installata');
+    refreshInstallUI();
+});
+
+function installState() {
+    if (isStandalone()) return 'installed';
+    if (installPrompt) return 'ready';
+    if (IS_ANDROID && IS_IN_APP_BROWSER) return 'inapp';
+    if (IS_IOS) return 'ios';
+    if (IS_ANDROID) return 'android';
+    return 'other';
+}
+
+const chromeIntentUrl = () => `intent://${location.host}${location.pathname}#Intent;scheme=https;package=com.android.chrome;end`;
+
+async function installApp() {
+    const st = installState();
+    if (st === 'ready') {
+        const p = installPrompt;
+        installPrompt = null;
+        p.prompt();
+        try { await p.userChoice; } catch (e) { /* finestra chiusa */ }
+        refreshInstallUI();
+        return;
+    }
+    if (st === 'inapp') { location.href = chromeIntentUrl(); return; }
+    const texts = {
+        ios: 'In Safari tocca il pulsante Condividi (il quadrato con la freccia) e scegli «Aggiungi alla schermata Home».',
+        android: 'Apri il sito in Chrome, tocca il menu ⋮ e scegli «Installa app». Se trovi solo «Aggiungi a schermata Home», l\'app probabilmente è già installata: cercala tra le app. Se sulla Home hai una vecchia icona con il logo, tienila premuta, rimuovila e reinstalla.',
+        other: 'Apri il sito con Chrome o Edge e usa il pulsante di installazione nella barra degli indirizzi o nel menu.'
+    };
+    alertDialog('Come installare l\'app', texts[st] || texts.other, 'fa-mobile-screen');
+}
+
+function dismissInstallCard() {
+    settings.installCardHidden = true;
+    saveSettings();
+    refreshInstallUI();
+}
+
+function installCardHtml() {
+    const st = installState();
+    if (settings.installCardHidden || !['ready', 'inapp'].includes(st)) return '';
+    const inapp = st === 'inapp';
+    return `
+        <div class="card p-4 mb-4 flex items-start gap-3 !border-brand/30">
+            <div class="w-11 h-11 rounded-2xl ${inapp ? 'bg-amber-500/10 text-amber-500' : 'bg-brand/10 text-brand'} flex items-center justify-center text-lg shrink-0"><i class="fa-solid ${inapp ? 'fa-triangle-exclamation' : 'fa-mobile-screen'}"></i></div>
+            <div class="flex-1 min-w-0">
+                <p class="font-extrabold text-sm leading-tight">${inapp ? 'Apri in Chrome per installare' : 'Installa Workout sul telefono'}</p>
+                <p class="text-xs text-muted font-medium mt-0.5">${inapp
+                    ? 'Stai usando il browser interno di un\'altra app: da qui l\'icona avrebbe il suo logo.'
+                    : 'Si apre a schermo intero, come un\'app vera, senza barra e senza logo del browser.'}</p>
+                <button onclick="installApp()" class="mt-3 bg-brand text-white text-sm font-bold px-4 py-2 rounded-xl active:scale-95 transition shadow-md shadow-brand/20">
+                    <i class="${inapp ? 'fa-brands fa-chrome' : 'fa-solid fa-download'} mr-1"></i> ${inapp ? 'Apri in Chrome' : 'Installa app'}
+                </button>
+            </div>
+            <button onclick="dismissInstallCard()" class="icon-btn -mr-2 -mt-2 w-8 h-8" aria-label="Nascondi"><i class="fa-solid fa-xmark text-sm"></i></button>
+        </div>`;
+}
+
+function renderInstallBox() {
+    const st = installState();
+    const box = $('installBox');
+    if (st === 'installed') {
+        box.innerHTML = '<p class="text-sm font-semibold text-emerald-500 ml-1"><i class="fa-solid fa-circle-check mr-1"></i> Stai usando l\'app installata</p>';
+        return;
+    }
+    const label = { ready: 'Installa app', inapp: 'Apri in Chrome per installare' }[st] || 'Come installare l\'app';
+    const icon = { ready: 'fa-solid fa-download', inapp: 'fa-brands fa-chrome' }[st] || 'fa-solid fa-circle-question';
+    box.innerHTML = `<button onclick="installApp()" class="btn-soft w-full py-3.5 !text-brand"><i class="${icon}"></i> ${label}</button>`;
+}
+
+function refreshInstallUI() {
+    if (modalStack.includes('settingsModal')) renderInstallBox();
+    if (nav.view === 'home') render();
 }
 
 // ================= AVVIO =================

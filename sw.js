@@ -1,7 +1,7 @@
 // Service worker: l'app funziona anche offline (es. in palestra senza campo).
 // File dell'app: prima la rete (così gli aggiornamenti arrivano subito), poi la cache.
 // Librerie esterne (Tailwind, icone, font): prima la cache, aggiornata in background.
-const CACHE = 'workout-v2.5.0';
+const CACHE = 'workout-v2.6.0';
 const APP_SHELL = [
   './',
   './index.html',
