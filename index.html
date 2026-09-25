@@ -392,24 +392,28 @@
                     <label for="exName" id="exNameLabel" class="field-label">Nome esercizio</label>
                     <input type="text" id="exName" placeholder="Es. Panca piana" autocomplete="off" class="field" data-autofocus>
                 </div>
-                <div id="superFields1" class="hidden">
-                    <label for="exSubName1" class="field-label !text-brand">Esercizio 1</label>
-                    <input type="text" id="exSubName1" placeholder="Es. Panca inclinata" autocomplete="off" class="field">
-                </div>
-                <div class="grid grid-cols-3 gap-2">
-                    <div><label for="exSets" class="field-label">Serie</label><input type="number" inputmode="numeric" id="exSets" placeholder="3" class="field text-center"></div>
-                    <div><label for="exReps1" class="field-label">Reps</label><input type="text" id="exReps1" placeholder="10" class="field text-center"></div>
-                    <div><label for="exWeight1" class="field-label">Kg</label><input type="text" inputmode="decimal" id="exWeight1" placeholder="—" class="field text-center"></div>
-                </div>
-                <div id="superFields2" class="hidden space-y-3 pt-3 border-t border-line">
-                    <div>
-                        <label for="exSubName2" class="field-label !text-accent">Esercizio 2</label>
-                        <input type="text" id="exSubName2" placeholder="Es. Croci ai cavi" autocomplete="off" class="field">
+                <div class="flex items-center justify-between gap-3 bg-inset border border-line rounded-2xl p-2 pl-4">
+                    <div class="min-w-0">
+                        <label for="exSets" class="text-sm font-extrabold">Serie</label>
+                        <p id="exSetsHint" class="text-[11px] text-muted font-semibold hidden">Uguali per entrambi gli esercizi</p>
                     </div>
-                    <div class="grid grid-cols-2 gap-2">
-                        <div><label for="exReps2" class="field-label">Reps</label><input type="text" id="exReps2" placeholder="10" class="field text-center"></div>
-                        <div><label for="exWeight2" class="field-label">Kg</label><input type="text" inputmode="decimal" id="exWeight2" placeholder="—" class="field text-center"></div>
+                    <div class="flex items-center gap-1 shrink-0">
+                        <button type="button" onclick="changeExSets(-1)" class="w-10 h-10 rounded-xl bg-surface border border-line text-ink active:scale-90 transition" aria-label="Una serie in meno"><i class="fa-solid fa-minus text-xs"></i></button>
+                        <input type="number" inputmode="numeric" id="exSets" min="1" max="20" class="w-12 h-10 bg-transparent text-center font-mono font-bold text-lg text-ink focus:outline-none" onchange="changeExSets(0)">
+                        <button type="button" onclick="changeExSets(1)" class="w-10 h-10 rounded-xl bg-surface border border-line text-ink active:scale-90 transition" aria-label="Una serie in più"><i class="fa-solid fa-plus text-xs"></i></button>
                     </div>
+                </div>
+                <div>
+                    <div id="superFields1" class="hidden mb-3">
+                        <label for="exSubName1" class="field-label !text-brand">Esercizio 1</label>
+                        <input type="text" id="exSubName1" placeholder="Es. Panca inclinata" autocomplete="off" class="field">
+                    </div>
+                    <div id="planTable1"></div>
+                </div>
+                <div id="superFields2" class="hidden pt-4 border-t border-line">
+                    <label for="exSubName2" class="field-label !text-accent">Esercizio 2</label>
+                    <input type="text" id="exSubName2" placeholder="Es. Croci ai cavi" autocomplete="off" class="field mb-3">
+                    <div id="planTable2"></div>
                 </div>
                 <div>
                     <label for="exDesc" class="field-label">Note</label>
@@ -429,23 +433,8 @@
                 <h3 class="text-xl font-extrabold">Registra sessione</h3>
                 <button type="button" class="icon-btn -mr-2" onclick="closeModal('logModal')" aria-label="Chiudi"><i class="fa-solid fa-xmark text-lg"></i></button>
             </div>
-            <p class="text-sm text-muted mb-4">Precompilato con l'ultima sessione registrata.</p>
-            <div class="space-y-4 mb-5">
-                <div>
-                    <p id="logTitle1" class="text-sm font-extrabold text-brand mb-2 truncate"></p>
-                    <div class="grid grid-cols-2 gap-2">
-                        <div><label for="logWeight" class="field-label">Peso (kg)</label><input type="text" inputmode="decimal" id="logWeight" placeholder="0" class="field text-center text-lg" data-autofocus></div>
-                        <div><label for="logReps" class="field-label">Ripetizioni</label><input type="number" inputmode="numeric" id="logReps" placeholder="0" class="field text-center text-lg"></div>
-                    </div>
-                </div>
-                <div id="logSuperGroup" class="hidden pt-4 border-t border-line">
-                    <p id="logTitle2" class="text-sm font-extrabold text-accent mb-2 truncate"></p>
-                    <div class="grid grid-cols-2 gap-2">
-                        <div><label for="logWeight2" class="field-label">Peso (kg)</label><input type="text" inputmode="decimal" id="logWeight2" placeholder="0" class="field text-center text-lg"></div>
-                        <div><label for="logReps2" class="field-label">Ripetizioni</label><input type="number" inputmode="numeric" id="logReps2" placeholder="0" class="field text-center text-lg"></div>
-                    </div>
-                </div>
-            </div>
+            <p class="text-sm text-muted mb-4">Precompilato con l'ultima sessione. Lascia vuote le ripetizioni di una serie per non registrarla.</p>
+            <div id="logBody" class="space-y-4 mb-5"></div>
             <button type="submit" class="btn-primary"><i class="fa-solid fa-check"></i> Salva nel diario</button>
         </form>
     </div>

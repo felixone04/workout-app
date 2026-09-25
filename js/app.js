@@ -1,6 +1,6 @@
 'use strict';
 
-const APP_VERSION = '2.0.0';
+const APP_VERSION = '2.1.0';
 const STORE_KEY = 'workoutAppV1';
 const LEGACY_KEYS = ['mySigmaV3', 'mySigmaV2'];
 const SETTINGS_KEY = 'workoutAppSettings';
@@ -57,19 +57,44 @@ function withTs(h) {
     return month === -1 ? h : { ...h, ts: new Date(+m[3], month, +m[1], 12).getTime() };
 }
 
+const MAX_SETS = 20;
+const str = (v) => (v == null ? '' : String(v).trim());
+
+/** Serie pianificate: [{ weight, reps }]. Gli esercizi vecchi (serie × reps @ kg unici) diventano N serie uguali. */
+function normalizePlan(plan, n, weight, reps) {
+    const out = Array.isArray(plan) && plan.length
+        ? plan.filter((s) => s && typeof s === 'object').map((s) => ({ weight: str(s.weight), reps: str(s.reps) }))
+        : [];
+    const base = out.length ? out[out.length - 1] : { weight: str(weight), reps: str(reps) };
+    while (out.length < n) out.push({ ...base });
+    return out.slice(0, n);
+}
+
+function normalizeExercise(e) {
+    const type = e.type === 'superset' ? 'superset' : 'classic';
+    let n = parseInt(e.sets, 10);
+    if (!(n > 0)) n = Array.isArray(e.plan1) && e.plan1.length ? e.plan1.length : 3;
+    n = Math.min(MAX_SETS, n);
+    const ex = {
+        ...e,
+        name: String(e.name || 'Esercizio'),
+        type,
+        sets: String(n),
+        plan1: normalizePlan(e.plan1, n, e.weight1, e.reps1),
+        history: Array.isArray(e.history) ? e.history.filter(Boolean).map(withTs) : [],
+        history2: Array.isArray(e.history2) ? e.history2.filter(Boolean).map(withTs) : []
+    };
+    ex.plan2 = type === 'superset' ? normalizePlan(e.plan2, n, e.weight2, e.reps2) : [];
+    return ex;
+}
+
 function normalizeData(p) {
     const out = { workouts: [], weeklyDiet: {}, foodDb: [] };
     if (Array.isArray(p.workouts)) {
         out.workouts = p.workouts.filter((d) => d && typeof d === 'object').map((d) => ({
             ...d,
             name: String(d.name || 'Scheda'),
-            exercises: (Array.isArray(d.exercises) ? d.exercises : []).filter((e) => e && typeof e === 'object').map((e) => ({
-                ...e,
-                name: String(e.name || 'Esercizio'),
-                type: e.type === 'superset' ? 'superset' : 'classic',
-                history: Array.isArray(e.history) ? e.history.filter(Boolean).map(withTs) : [],
-                history2: Array.isArray(e.history2) ? e.history2.filter(Boolean).map(withTs) : []
-            }))
+            exercises: (Array.isArray(d.exercises) ? d.exercises : []).filter((e) => e && typeof e === 'object').map(normalizeExercise)
         }));
     }
     const diet = p.weeklyDiet && typeof p.weeklyDiet === 'object' ? p.weeklyDiet : {};
@@ -471,23 +496,58 @@ async function deleteWorkoutDay() {
     go('workout', {}, { replace: true });
 }
 
-function logLine(h) {
-    if (!h) return '';
-    const w = h.weight !== '' && h.weight != null ? `${esc(h.weight)} kg` : '—';
-    return `${w} × ${esc(h.reps || '—')}`;
+// ---- Serie: formattazione ----
+const fmtW = (w) => { const n = parseNum(w); return Number.isFinite(n) ? fmt(n, 2) : ''; };
+/** "80×10" oppure "10 rip" se senza peso */
+function fmtSet(s) {
+    const w = fmtW(s.weight);
+    return w ? `${w}×${s.reps || '—'}` : `${s.reps || '—'} rip`;
+}
+/** Serie di un log: i log vecchi hanno un solo peso/ripetizioni. */
+const setsOf = (h) => (Array.isArray(h.sets) && h.sets.length ? h.sets : [{ weight: h.weight, reps: h.reps }]);
+const isUniform = (plan) => plan.every((s) => s.weight === plan[0].weight && s.reps === plan[0].reps);
+const COLOR = {
+    brand: { soft: 'bg-brand/10 text-brand', text: 'text-brand' },
+    accent: { soft: 'bg-accent/10 text-accent', text: 'text-accent' }
+};
+
+function bestWeight(list) {
+    let best = -Infinity;
+    list.forEach((h) => setsOf(h).forEach((s) => { const w = parseNum(s.weight); if (w > best) best = w; }));
+    return best > 0 ? best : null;
+}
+
+function setPills(sets, { numbered = false, best = null } = {}) {
+    return sets.map((s, i) => {
+        const isBest = best !== null && parseNum(s.weight) === best;
+        return `<span class="chip ${isBest ? '!bg-amber-500/10 !border-amber-500/30' : ''}">${numbered ? `<span class="text-muted text-[10px]">S${i + 1}</span>` : ''}${esc(fmtSet(s))}</span>`;
+    }).join('');
+}
+
+/** Riepilogo della pianificazione: compatto se tutte le serie sono uguali, altrimenti serie per serie. */
+function planHtml(plan) {
+    if (isUniform(plan)) {
+        const s = plan[0];
+        return `<span class="chip">${esc(s.reps || '—')} <span class="text-muted text-[10px]">REPS</span></span>` +
+            (fmtW(s.weight) ? `<span class="chip !bg-brand/10 !border-brand/20 !text-brand">${esc(fmtW(s.weight))} <span class="text-[10px]">KG</span></span>` : '');
+    }
+    return setPills(plan, { numbered: true });
 }
 
 function historyTable(list, dIdx, eIdx, which) {
     if (!list.length) return '<p class="text-xs text-muted py-2 text-center">Nessun log</p>';
-    const best = Math.max(...list.map((h) => parseNum(h.weight)).filter(Number.isFinite), -Infinity);
+    const best = bestWeight(list);
     return list.map((h, hIdx) => {
-        const isBest = Number.isFinite(best) && best > 0 && parseNum(h.weight) === best;
+        const sets = setsOf(h);
+        const hasBest = best !== null && sets.some((s) => parseNum(s.weight) === best);
         return `
-            <div class="flex items-center gap-2 py-1.5 border-b border-line/70 last:border-0">
-                <span class="text-xs text-muted flex-1 min-w-0 truncate">${esc(h.date || '')}</span>
-                ${isBest ? '<i class="fa-solid fa-trophy text-amber-500 text-[10px]" title="Record"></i>' : ''}
-                <span class="text-xs font-bold font-mono">${logLine(h)}</span>
-                <button onclick="deleteLog(${dIdx}, ${eIdx}, ${which}, ${hIdx})" class="w-7 h-7 -mr-1 rounded-full text-muted hover:text-rose-500 flex items-center justify-center" aria-label="Elimina log"><i class="fa-solid fa-xmark text-xs"></i></button>
+            <div class="py-2 border-b border-line/70 last:border-0">
+                <div class="flex items-center gap-2">
+                    <span class="text-xs font-bold text-muted flex-1 min-w-0 truncate">${esc(h.date || '')}</span>
+                    ${hasBest ? '<i class="fa-solid fa-trophy text-amber-500 text-[10px]" title="Record"></i>' : ''}
+                    <button onclick="deleteLog(${dIdx}, ${eIdx}, ${which}, ${hIdx})" class="w-7 h-7 -mr-1 -my-1 rounded-full text-muted hover:text-rose-500 flex items-center justify-center" aria-label="Elimina log"><i class="fa-solid fa-xmark text-xs"></i></button>
+                </div>
+                <div class="flex flex-wrap gap-1 mt-1">${setPills(sets, { best })}</div>
             </div>`;
     }).join('');
 }
@@ -516,35 +576,36 @@ function renderWorkoutDay() {
         const key = `${dIdx}-${eIdx}`;
         const hasHist = ex.history.length > 0 || (isSuper && ex.history2.length > 0);
         const open = openHistories.has(key) && hasHist;
+        const setsChip = `<span class="chip">${esc(ex.sets)} <span class="text-muted text-[10px]">SERIE</span></span>`;
 
         const body = isSuper ? `
-            <div class="mt-3 space-y-1.5">
-                <div class="flex items-center justify-between gap-2 bg-inset border border-line rounded-xl px-3 py-2">
-                    <span class="text-xs font-bold text-brand truncate">1 · ${esc(ex.subName1 || ex.name)}</span>
-                    <span class="text-xs font-mono font-bold shrink-0">${esc(ex.sets)}×${esc(ex.reps1)}${ex.weight1 ? ` <span class="text-muted">@</span> ${esc(ex.weight1)}kg` : ''}</span>
+            <div class="mt-2 flex flex-wrap items-center gap-1.5">${setsChip}<span class="text-[11px] text-muted font-semibold">per entrambi gli esercizi</span></div>
+            <div class="mt-2 space-y-1.5">
+                <div class="bg-inset border border-line rounded-xl px-3 py-2">
+                    <p class="text-xs font-bold text-brand truncate mb-1.5">1 · ${esc(ex.subName1 || ex.name)}</p>
+                    <div class="flex flex-wrap gap-1">${planHtml(ex.plan1)}</div>
                 </div>
-                <div class="flex items-center justify-between gap-2 bg-inset border border-line rounded-xl px-3 py-2">
-                    <span class="text-xs font-bold text-accent truncate">2 · ${esc(ex.subName2 || ex.name2 || 'Esercizio 2')}</span>
-                    <span class="text-xs font-mono font-bold shrink-0">${esc(ex.sets)}×${esc(ex.reps2 || '—')}${ex.weight2 ? ` <span class="text-muted">@</span> ${esc(ex.weight2)}kg` : ''}</span>
+                <div class="bg-inset border border-line rounded-xl px-3 py-2">
+                    <p class="text-xs font-bold text-accent truncate mb-1.5">2 · ${esc(ex.subName2 || ex.name2 || 'Esercizio 2')}</p>
+                    <div class="flex flex-wrap gap-1">${planHtml(ex.plan2)}</div>
                 </div>
             </div>` : `
-            <div class="mt-2 flex flex-wrap items-center gap-1.5">
-                <span class="chip">${esc(ex.sets)} <span class="text-muted text-[10px]">SERIE</span></span>
-                <span class="chip">${esc(ex.reps1)} <span class="text-muted text-[10px]">REPS</span></span>
-                ${ex.weight1 ? `<span class="chip !bg-brand/10 !border-brand/20 !text-brand">${esc(ex.weight1)} <span class="text-[10px]">KG</span></span>` : ''}
-            </div>`;
+            <div class="mt-2 flex flex-wrap items-center gap-1.5">${setsChip}${planHtml(ex.plan1)}</div>`;
 
-        const lastHtml = hasHist ? `
-            <p class="text-xs text-muted mt-3 flex items-center gap-1.5 flex-wrap">
-                <i class="fa-solid fa-clock-rotate-left"></i> Ultimo:
-                <b class="text-ink font-mono">${logLine(ex.history[0])}${isSuper && ex.history2[0] ? ' | ' + logLine(ex.history2[0]) : ''}</b>
-                <span>· ${esc((ex.history[0] || ex.history2[0]).date || '')}</span>
-            </p>` : '';
+        const last1 = ex.history[0];
+        const last2 = isSuper ? ex.history2[0] : null;
+        const lastRef = last1 || last2;
+        const lastHtml = lastRef ? `
+            <div class="mt-3">
+                <p class="text-xs text-muted flex items-center gap-1.5"><i class="fa-solid fa-clock-rotate-left"></i> Ultima sessione · ${esc(lastRef.date || '')}</p>
+                ${last1 ? `<div class="flex flex-wrap items-center gap-1 mt-1">${isSuper ? '<span class="text-[10px] font-extrabold text-brand w-3">1</span>' : ''}${setPills(setsOf(last1))}</div>` : ''}
+                ${last2 ? `<div class="flex flex-wrap items-center gap-1 mt-1"><span class="text-[10px] font-extrabold text-accent w-3">2</span>${setPills(setsOf(last2))}</div>` : ''}
+            </div>` : '';
 
         const histHtml = !hasHist ? '' : isSuper ? `
             <div class="grid grid-cols-2 gap-2">
-                <div class="bg-inset border border-line rounded-xl p-2"><p class="text-[10px] font-bold text-brand uppercase truncate mb-1">${esc(ex.subName1 || ex.name)}</p>${historyTable(ex.history, dIdx, eIdx, 1)}</div>
-                <div class="bg-inset border border-line rounded-xl p-2"><p class="text-[10px] font-bold text-accent uppercase truncate mb-1">${esc(ex.subName2 || 'Es. 2')}</p>${historyTable(ex.history2, dIdx, eIdx, 2)}</div>
+                <div class="bg-inset border border-line rounded-xl px-2 py-1"><p class="text-[10px] font-bold text-brand uppercase truncate pt-1">${esc(ex.subName1 || ex.name)}</p>${historyTable(ex.history, dIdx, eIdx, 1)}</div>
+                <div class="bg-inset border border-line rounded-xl px-2 py-1"><p class="text-[10px] font-bold text-accent uppercase truncate pt-1">${esc(ex.subName2 || 'Es. 2')}</p>${historyTable(ex.history2, dIdx, eIdx, 2)}</div>
             </div>` : `<div class="bg-inset border border-line rounded-xl px-3 py-1">${historyTable(ex.history, dIdx, eIdx, 1)}</div>`;
 
         return `
@@ -568,7 +629,7 @@ function renderWorkoutDay() {
                     <button onclick="moveExercise(${eIdx}, -1)" class="btn-soft w-10 !rounded-xl ${eIdx === 0 ? 'opacity-30 pointer-events-none' : ''}" aria-label="Sposta su"><i class="fa-solid fa-arrow-up text-xs"></i></button>
                     <button onclick="moveExercise(${eIdx}, 1)" class="btn-soft w-10 !rounded-xl ${eIdx === n - 1 ? 'opacity-30 pointer-events-none' : ''}" aria-label="Sposta giù"><i class="fa-solid fa-arrow-down text-xs"></i></button>
                 </div>
-                ${hasHist ? `<div id="hist-${key}" class="expander ${open ? 'open' : ''}"><div><div class="pt-3">${histHtml}</div></div></div>` : ''}
+                ${hasHist ? `<div id="hist-${key}" class="expander ${open ? 'open' : ''}"><div><div class="pt-3"><p class="text-[10px] font-bold uppercase tracking-wider text-muted mb-1 ml-1">Storico · kg × ripetizioni</p>${histHtml}</div></div></div>` : ''}
             </article>`;
     }).join('');
 }
@@ -593,26 +654,85 @@ function moveExercise(eIdx, dir) {
 
 // ---- Modale esercizio ----
 let editingEx = null; // indice esercizio in modifica, null = nuovo
+let exDraft = { 1: [], 2: [] }; // serie in modifica (peso/reps per ogni serie)
+
+function resizePlan(plan, n) {
+    while (plan.length < n) plan.push(plan.length ? { ...plan[plan.length - 1] } : { weight: '', reps: '' });
+    plan.length = n;
+    return plan;
+}
+
+function syncExDraft() {
+    document.querySelectorAll('#exModal [data-plan]').forEach((inp) => {
+        const s = exDraft[inp.dataset.plan][inp.dataset.i];
+        if (s) s[inp.dataset.k] = inp.value.trim();
+    });
+}
+
+function planTableHtml(which, plan, color) {
+    const c = COLOR[color];
+    const rows = plan.map((s, i) => `
+        <div class="grid grid-cols-[2.25rem_1fr_1fr] gap-2 items-center">
+            <span class="h-10 rounded-xl ${c.soft} text-xs font-extrabold flex items-center justify-center">${i + 1}</span>
+            <input type="text" inputmode="decimal" data-plan="${which}" data-i="${i}" data-k="weight" value="${esc(s.weight)}" placeholder="—" aria-label="Kg serie ${i + 1}" class="field !py-2 !px-2 text-center">
+            <input type="text" data-plan="${which}" data-i="${i}" data-k="reps" value="${esc(s.reps)}" placeholder="10" aria-label="Ripetizioni serie ${i + 1}" class="field !py-2 !px-2 text-center">
+        </div>`).join('');
+    return `
+        <div class="grid grid-cols-[2.25rem_1fr_1fr] gap-2 mb-1.5 text-[10px] font-bold uppercase tracking-wider text-muted text-center"><span>Serie</span><span>Kg</span><span>Reps</span></div>
+        <div class="space-y-1.5">${rows}</div>
+        ${plan.length > 1 ? `<button type="button" onclick="copyFirstSet(${which})" class="mt-2 ml-1 text-xs font-bold ${c.text} active:scale-95 transition"><i class="fa-solid fa-clone mr-1"></i> Copia la serie 1 su tutte</button>` : ''}`;
+}
+
+function renderPlanTables() {
+    const sup = $('exModal').dataset.type === 'superset';
+    $('planTable1').innerHTML = planTableHtml(1, exDraft[1], 'brand');
+    $('planTable2').innerHTML = sup ? planTableHtml(2, exDraft[2], 'accent') : '';
+}
+
+function changeExSets(delta) {
+    syncExDraft();
+    const inp = $('exSets');
+    let n = parseInt(inp.value, 10) || exDraft[1].length || 1;
+    if (delta) n = exDraft[1].length + delta;
+    n = Math.max(1, Math.min(MAX_SETS, n));
+    inp.value = n;
+    resizePlan(exDraft[1], n);
+    resizePlan(exDraft[2], n);
+    renderPlanTables();
+}
+
+function copyFirstSet(which) {
+    syncExDraft();
+    const first = exDraft[which][0];
+    exDraft[which] = exDraft[which].map(() => ({ ...first }));
+    renderPlanTables();
+}
 
 function setExType(type) {
+    syncExDraft();
     const sup = type === 'superset';
     $('typeClassic').classList.toggle('active', !sup);
     $('typeSuper').classList.toggle('active', sup);
     $('superFields1').classList.toggle('hidden', !sup);
     $('superFields2').classList.toggle('hidden', !sup);
+    $('exSetsHint').classList.toggle('hidden', !sup);
     $('exNameLabel').textContent = sup ? 'Nome del superset' : 'Nome esercizio';
     $('exModal').dataset.type = type;
+    resizePlan(exDraft[2], exDraft[1].length);
+    renderPlanTables();
 }
 
 function fillExForm(ex) {
+    const n = Math.min(MAX_SETS, parseInt(ex.sets, 10) || 3);
+    const clone = (p) => (Array.isArray(p) ? p.map((s) => ({ weight: str(s.weight), reps: str(s.reps) })) : []);
+    exDraft = { 1: resizePlan(clone(ex.plan1), n), 2: resizePlan(clone(ex.plan2), n) };
+    // svuota le righe dell'esercizio aperto in precedenza, altrimenti setExType le rileggerebbe nella bozza
+    $('planTable1').innerHTML = '';
+    $('planTable2').innerHTML = '';
     $('exName').value = ex.name || '';
     $('exSubName1').value = ex.subName1 || '';
     $('exSubName2').value = ex.subName2 || ex.name2 || '';
-    $('exSets').value = ex.sets || '';
-    $('exReps1').value = ex.reps1 || '';
-    $('exWeight1').value = ex.weight1 || '';
-    $('exReps2').value = ex.reps2 || '';
-    $('exWeight2').value = ex.weight2 || '';
+    $('exSets').value = n;
     $('exDesc').value = ex.desc || '';
     setExType(ex.type || 'classic');
 }
@@ -639,21 +759,28 @@ function cleanWeight(v) {
 }
 
 async function saveExercise() {
+    syncExDraft();
     const type = $('exModal').dataset.type || 'classic';
     const nameEl = $('exName');
     const name = nameEl.value.trim();
     if (!name) { shake(nameEl); return; }
-    const sets = parseInt($('exSets').value, 10);
+    const n = exDraft[1].length;
+    const finalize = (plan) => plan.slice(0, n).map((s) => ({ weight: cleanWeight(s.weight), reps: s.reps || '10' }));
+    const plan1 = finalize(exDraft[1]);
+    const plan2 = type === 'superset' ? finalize(exDraft[2]) : [];
     const ex = {
         name,
         type,
         subName1: type === 'superset' ? $('exSubName1').value.trim() : '',
         subName2: type === 'superset' ? $('exSubName2').value.trim() : '',
-        sets: String(sets > 0 ? sets : 3),
-        reps1: $('exReps1').value.trim() || '10',
-        weight1: cleanWeight($('exWeight1').value),
-        reps2: type === 'superset' ? ($('exReps2').value.trim() || '10') : '',
-        weight2: type === 'superset' ? cleanWeight($('exWeight2').value) : '',
+        sets: String(n),
+        plan1,
+        plan2,
+        // campi della versione precedente (prima serie), mantenuti per compatibilità dei backup
+        reps1: plan1[0].reps,
+        weight1: plan1[0].weight,
+        reps2: plan2[0] ? plan2[0].reps : '',
+        weight2: plan2[0] ? plan2[0].weight : '',
         desc: $('exDesc').value.trim()
     };
     const list = state.workouts[nav.workoutDay].exercises;
@@ -685,38 +812,84 @@ async function deleteExercise() {
 // ---- Log sessioni ----
 let loggingEx = null;
 
+/** Valori iniziali del log: ultima sessione serie per serie, altrimenti la pianificazione della scheda. */
+function logStartRows(plan, last) {
+    const src = last && Array.isArray(last.sets) ? last.sets : null;
+    return plan.map((p, i) => {
+        const s = src ? (src[i] || p) : last ? { weight: last.weight, reps: last.reps } : p;
+        const reps = parseNum(s.reps);
+        return { weight: str(s.weight), reps: Number.isFinite(reps) ? String(Math.trunc(reps)) : '' };
+    });
+}
+
+function logGroupHtml(which, title, rows, color) {
+    const c = COLOR[color];
+    return `
+        <div>
+            <p class="text-sm font-extrabold ${c.text} mb-2 truncate"><i class="fa-solid fa-dumbbell mr-1"></i> ${esc(title)}</p>
+            <div class="grid grid-cols-[2.25rem_1fr_1fr] gap-2 mb-1.5 text-[10px] font-bold uppercase tracking-wider text-muted text-center"><span>Serie</span><span>Kg</span><span>Reps</span></div>
+            <div class="space-y-1.5">
+                ${rows.map((s, i) => `
+                    <div class="grid grid-cols-[2.25rem_1fr_1fr] gap-2 items-center">
+                        <span class="h-11 rounded-xl ${c.soft} text-xs font-extrabold flex items-center justify-center">${i + 1}</span>
+                        <input type="text" inputmode="decimal" data-log="${which}" data-i="${i}" data-k="weight" value="${esc(s.weight)}" placeholder="0" aria-label="Kg serie ${i + 1}" class="field !py-2.5 !px-2 text-center">
+                        <input type="number" inputmode="numeric" min="0" data-log="${which}" data-i="${i}" data-k="reps" value="${esc(s.reps)}" placeholder="—" aria-label="Ripetizioni serie ${i + 1}" class="field !py-2.5 !px-2 text-center">
+                    </div>`).join('')}
+            </div>
+            ${rows.length > 1 ? `<button type="button" onclick="copyFirstLogSet(${which})" class="mt-2 ml-1 text-xs font-bold ${c.text} active:scale-95 transition"><i class="fa-solid fa-clone mr-1"></i> Copia la serie 1 su tutte</button>` : ''}
+        </div>`;
+}
+
 function promptLogSession(eIdx) {
     loggingEx = eIdx;
     const ex = state.workouts[nav.workoutDay].exercises[eIdx];
     const isSuper = ex.type === 'superset';
-    const h1 = ex.history[0];
-    const h2 = ex.history2[0];
-    const numOnly = (v) => (Number.isFinite(parseNum(v)) ? String(parseNum(v)) : '');
-    $('logTitle1').innerHTML = `<i class="fa-solid fa-dumbbell mr-1"></i> ${esc(isSuper ? (ex.subName1 || ex.name) : ex.name)}`;
-    $('logWeight').value = h1 ? (h1.weight ?? '') : (ex.weight1 || '');
-    $('logReps').value = numOnly(h1 ? h1.reps : ex.reps1);
-    $('logSuperGroup').classList.toggle('hidden', !isSuper);
+    let html = logGroupHtml(1, isSuper ? (ex.subName1 || ex.name) : ex.name, logStartRows(ex.plan1, ex.history[0]), 'brand');
     if (isSuper) {
-        $('logTitle2').innerHTML = `<i class="fa-solid fa-dumbbell mr-1"></i> ${esc(ex.subName2 || ex.name2 || 'Esercizio 2')}`;
-        $('logWeight2').value = h2 ? (h2.weight ?? '') : (ex.weight2 || '');
-        $('logReps2').value = numOnly(h2 ? h2.reps : ex.reps2);
+        html += '<div class="border-t border-line"></div>' +
+            logGroupHtml(2, ex.subName2 || ex.name2 || 'Esercizio 2', logStartRows(ex.plan2, ex.history2[0]), 'accent');
     }
+    $('logBody').innerHTML = html;
     openModal('logModal');
+}
+
+function copyFirstLogSet(which) {
+    const get = (i, k) => document.querySelector(`#logBody [data-log="${which}"][data-i="${i}"][data-k="${k}"]`);
+    const w = get(0, 'weight').value;
+    const r = get(0, 'reps').value;
+    document.querySelectorAll(`#logBody [data-log="${which}"][data-k="weight"]`).forEach((el) => { el.value = w; });
+    document.querySelectorAll(`#logBody [data-log="${which}"][data-k="reps"]`).forEach((el) => { el.value = r; });
+}
+
+/** Serie compilate di un gruppo; quelle senza ripetizioni non vengono registrate. */
+function readLogSets(which) {
+    return [...document.querySelectorAll(`#logBody [data-log="${which}"][data-k="reps"]`)].map((repsEl) => {
+        const wEl = document.querySelector(`#logBody [data-log="${which}"][data-i="${repsEl.dataset.i}"][data-k="weight"]`);
+        return { weight: cleanWeight(wEl.value), reps: parseInt(repsEl.value, 10) };
+    }).filter((s) => s.reps > 0).map((s) => ({ weight: s.weight, reps: String(s.reps) }));
+}
+
+function logEntry(sets, date, ts) {
+    // peso/ripetizioni in cima = serie più pesante (compatibilità con la versione precedente)
+    const top = sets.reduce((a, s) => ((parseNum(s.weight) || 0) > (parseNum(a.weight) || 0) ? s : a), sets[0]);
+    return { date, ts, sets, weight: top.weight, reps: top.reps };
 }
 
 async function confirmLogSession() {
     const ex = state.workouts[nav.workoutDay].exercises[loggingEx];
     const isSuper = ex.type === 'superset';
-    const read = (wId, rId) => ({ weight: cleanWeight($(wId).value), reps: String(parseInt($(rId).value, 10) || '') });
-    const e1 = read('logWeight', 'logReps');
-    if (!e1.reps) { shake($('logReps')); return; }
-    const e2 = isSuper ? read('logWeight2', 'logReps2') : null;
-    if (isSuper && !e2.reps) { shake($('logReps2')); return; }
-
+    const sets1 = readLogSets(1);
+    const sets2 = isSuper ? readLogSets(2) : [];
+    const missing = !sets1.length ? 1 : isSuper && !sets2.length ? 2 : 0;
+    if (missing) {
+        shake(document.querySelector(`#logBody [data-log="${missing}"][data-k="reps"]`));
+        toast('Inserisci le ripetizioni di almeno una serie', 'fa-triangle-exclamation');
+        return;
+    }
     const ts = Date.now();
     const date = new Date(ts).toLocaleDateString('it-IT', { day: '2-digit', month: 'short', year: 'numeric' });
-    ex.history.unshift({ date, ts, ...e1 });
-    if (isSuper) ex.history2.unshift({ date, ts, ...e2 });
+    ex.history.unshift(logEntry(sets1, date, ts));
+    if (isSuper) ex.history2.unshift(logEntry(sets2, date, ts));
     persist();
     await closeModal('logModal');
     openHistories.add(`${nav.workoutDay}-${loggingEx}`);
@@ -729,7 +902,7 @@ async function deleteLog(dIdx, eIdx, which, hIdx) {
     const list = which === 2 ? ex.history2 : ex.history;
     const h = list[hIdx];
     if (!h) return;
-    if (!(await confirmDialog('Eliminare questo log?', `${h.date || ''}: ${h.weight || '—'} kg × ${h.reps || '—'}`))) return;
+    if (!(await confirmDialog('Eliminare questo log?', `${h.date || ''}: ${setsOf(h).map(fmtSet).join(' · ')}`))) return;
     list.splice(hIdx, 1);
     persist(); render();
 }
