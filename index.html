@@ -2,1567 +2,526 @@
 <html lang="it">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    
-    <!-- PWA Settings (Mobile Install) -->
-    <meta name="theme-color" content="#f1f5f9">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, viewport-fit=cover">
+
+    <!-- PWA -->
+    <meta name="theme-color" content="#f4f6fb">
     <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="default">
     <meta name="apple-mobile-web-app-title" content="Workout">
     <meta name="application-name" content="Workout">
-    
-    <!-- Link dinamici per l'icona PWA -->
-    <link id="dynamicFavicon" rel="icon" href="">
-    <link id="dynamicAppleIcon" rel="apple-touch-icon" href="">
-    
-    <title>Workout App</title>
+    <meta name="description" content="Schede di allenamento, dieta settimanale e conversioni dei macro.">
+    <link rel="manifest" href="manifest.webmanifest">
+    <link rel="icon" type="image/svg+xml" href="icons/icon.svg">
+    <link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
+    <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+
+    <title>Workout</title>
+
+    <!-- Tema applicato prima del render per evitare il "flash" di colori sbagliati -->
+    <script>
+        (function () {
+            var theme = 'auto';
+            try { theme = (JSON.parse(localStorage.getItem('workoutAppSettings')) || {}).theme || 'auto'; } catch (e) {}
+            var dark = theme === 'dark' || (theme === 'auto' && window.matchMedia('(prefers-color-scheme: dark)').matches);
+            if (dark) document.documentElement.classList.add('dark');
+        })();
+    </script>
+
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
-    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@600;700&display=swap" rel="stylesheet">
     <script>
         tailwind.config = {
+            darkMode: 'class',
             theme: {
                 extend: {
-                    fontFamily: { sans: ['"Plus Jakarta Sans"', 'sans-serif'] },
-                    colors: { 
-                        brand: '#4f46e5', // Indigo 600
-                        brandAccent: '#7c3aed', // Violet 600
-                        bgBase: '#f1f5f9', // Slate 100
-                        bgSurface: '#ffffff', // Bianco puro
-                        borderBase: '#e2e8f0', // Slate 200
-                        textMain: '#0f172a', // Slate 900
-                        textMuted: '#64748b'  // Slate 500
+                    fontFamily: {
+                        sans: ['"Plus Jakarta Sans"', 'system-ui', 'sans-serif'],
+                        mono: ['"JetBrains Mono"', 'ui-monospace', 'monospace']
+                    },
+                    colors: {
+                        bg: 'rgb(var(--c-bg) / <alpha-value>)',
+                        surface: 'rgb(var(--c-surface) / <alpha-value>)',
+                        inset: 'rgb(var(--c-inset) / <alpha-value>)',
+                        line: 'rgb(var(--c-line) / <alpha-value>)',
+                        ink: 'rgb(var(--c-ink) / <alpha-value>)',
+                        muted: 'rgb(var(--c-muted) / <alpha-value>)',
+                        brand: 'rgb(var(--c-brand) / <alpha-value>)',
+                        accent: 'rgb(var(--c-accent) / <alpha-value>)'
                     }
                 }
             }
-        }
+        };
     </script>
+    <style type="text/tailwindcss">
+        @layer components {
+            .card { @apply bg-surface border border-line rounded-3xl shadow-[0_1px_2px_rgb(15_23_42/0.04),0_8px_24px_-12px_rgb(15_23_42/0.12)]; }
+            .field { @apply w-full bg-inset border border-line rounded-2xl px-4 py-3 text-base font-semibold text-ink placeholder:text-muted/70 placeholder:font-medium focus:border-brand focus:ring-4 focus:ring-brand/15 transition; }
+            .field-label { @apply block text-[11px] font-bold uppercase tracking-wider text-muted mb-1.5 ml-1; }
+            .btn-primary { @apply w-full flex items-center justify-center gap-2 bg-gradient-to-r from-brand to-accent text-white py-3.5 rounded-2xl font-bold shadow-lg shadow-brand/25 active:scale-[0.98] transition disabled:opacity-50; }
+            .btn-soft { @apply flex items-center justify-center gap-2 bg-inset border border-line text-ink font-bold rounded-2xl active:scale-[0.97] transition hover:border-muted/40; }
+            .btn-danger { @apply w-full flex items-center justify-center gap-2 bg-rose-500/10 text-rose-500 border border-rose-500/20 py-3 rounded-2xl font-bold active:scale-[0.98] transition; }
+            .icon-btn { @apply w-10 h-10 shrink-0 rounded-full flex items-center justify-center text-muted hover:text-ink hover:bg-inset active:scale-90 transition; }
+            .seg-group { @apply flex gap-1 bg-inset p-1 rounded-2xl border border-line; }
+            .seg { @apply flex-1 py-2 text-xs font-bold rounded-xl text-muted transition; }
+            .seg.active { @apply bg-surface text-ink shadow-sm; }
+            .chip { @apply inline-flex items-center gap-1 bg-inset border border-line px-2 py-1 rounded-lg text-xs font-mono font-bold text-ink; }
+        }
+    </style>
     <style>
-        body { 
-            background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
-            color: #0f172a;
+        :root {
+            --c-bg: 244 246 251; --c-surface: 255 255 255; --c-inset: 241 244 249; --c-line: 226 232 240;
+            --c-ink: 15 23 42; --c-muted: 100 116 139; --c-brand: 79 70 229; --c-accent: 124 58 237;
+            --nav-h: calc(68px + env(safe-area-inset-bottom));
+            color-scheme: light;
+        }
+        .dark {
+            --c-bg: 9 12 20; --c-surface: 19 24 37; --c-inset: 13 17 28; --c-line: 37 45 64;
+            --c-ink: 236 240 247; --c-muted: 140 152 174; --c-brand: 129 140 248; --c-accent: 167 139 250;
+            color-scheme: dark;
+        }
+        html { background: rgb(var(--c-bg)); }
+        body {
+            background: rgb(var(--c-bg));
+            color: rgb(var(--c-ink));
             -webkit-tap-highlight-color: transparent;
             overscroll-behavior-y: none;
         }
-        ::-webkit-scrollbar { width: 0px; background: transparent; }
+        button { touch-action: manipulation; }
+        input[type=number]::-webkit-inner-spin-button, input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+        input[type=number] { -moz-appearance: textfield; }
         .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
-        
-        .fade-in { animation: fadeIn 0.3s cubic-bezier(0.4, 0, 0.2, 1); }
-        @keyframes fadeIn { from { opacity: 0; transform: translateY(15px); } to { opacity: 1; transform: translateY(0); } }
-        
-        .modal-overlay { background-color: rgba(15, 23, 42, 0.3); backdrop-filter: blur(5px); }
-        .accordion-content { transition: max-height 0.4s ease, opacity 0.4s ease, padding 0.4s ease; max-height: 0; opacity: 0; overflow: hidden; padding-top: 0; padding-bottom: 0; }
-        .accordion-content.expanded { max-height: 3000px; opacity: 1; padding-top: 0.75rem; padding-bottom: 0.75rem; }
-        
-        input, select, textarea { outline: none !important; color: #0f172a !important; }
-        select option, select optgroup { background-color: #ffffff; color: #0f172a; }
-        
-        #floatingTimer { transition: transform 0.4s cubic-bezier(0.4, 0, 0.2, 1); }
-        .timer-hidden { transform: translateY(150%); }
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+
+        .view { animation: viewIn .28s cubic-bezier(.2, .8, .2, 1); }
+        @keyframes viewIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+
+        .app-header { padding-top: env(safe-area-inset-top); }
+        .bottom-nav { height: var(--nav-h); padding-bottom: env(safe-area-inset-bottom); }
+        main { padding-bottom: calc(var(--nav-h) + 24px); }
+        body.with-timer main { padding-bottom: calc(var(--nav-h) + 124px); }
+        .nav-item.active { color: rgb(var(--c-brand)); }
+        .nav-item.active .nav-pill { background: rgb(var(--c-brand) / .12); }
+
+        /* Modali: bottom sheet su mobile, finestra centrata su schermi grandi */
+        .modal { position: fixed; inset: 0; z-index: 50; display: flex; align-items: flex-end; justify-content: center; background: rgb(2 6 23 / .45); backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px); opacity: 0; transition: opacity .25s ease; }
+        .modal.open { opacity: 1; }
+        .sheet { width: 100%; max-width: 28rem; max-height: 92dvh; overflow-y: auto; background: rgb(var(--c-surface)); border: 1px solid rgb(var(--c-line)); border-bottom: 0; border-radius: 1.75rem 1.75rem 0 0; padding: .75rem 1.25rem calc(1.5rem + env(safe-area-inset-bottom)); transform: translateY(100%); transition: transform .32s cubic-bezier(.2, .8, .2, 1); box-shadow: 0 -20px 50px -20px rgb(2 6 23 / .35); scrollbar-width: none; }
+        .sheet::-webkit-scrollbar { display: none; }
+        .modal.open .sheet { transform: none; }
+        .sheet-handle { width: 40px; height: 5px; border-radius: 99px; background: rgb(var(--c-line)); margin: 0 auto .75rem; }
+        .modal.center { align-items: center; padding: 1rem; }
+        .modal.center .sheet { border-radius: 1.75rem; border-bottom: 1px solid rgb(var(--c-line)); max-width: 22rem; padding: 1.5rem; transform: scale(.94); opacity: 0; transition: transform .22s ease, opacity .22s ease; }
+        .modal.center.open .sheet { transform: none; opacity: 1; }
+        .modal.center .sheet-handle { display: none; }
+        @media (min-width: 640px) {
+            .modal { align-items: center; padding: 1rem; }
+            .sheet { border-radius: 1.75rem; border-bottom: 1px solid rgb(var(--c-line)); padding-bottom: 1.5rem; transform: translateY(16px) scale(.97); opacity: 0; transition: transform .25s ease, opacity .25s ease; }
+            .modal.open .sheet { transform: none; opacity: 1; }
+            .sheet-handle { display: none; }
+        }
+
+        .expander { display: grid; grid-template-rows: 0fr; transition: grid-template-rows .3s ease; }
+        .expander > div { overflow: hidden; }
+        .expander.open { grid-template-rows: 1fr; }
+
+        #timer { transition: transform .35s cubic-bezier(.2, .8, .2, 1), opacity .25s; bottom: calc(var(--nav-h) + 10px); }
+        #timer.timer-hidden { transform: translateY(calc(100% + var(--nav-h) + 20px)); opacity: 0; pointer-events: none; }
+
+        .shake { animation: shake .35s; }
+        @keyframes shake { 20%, 60% { transform: translateX(-5px); } 40%, 80% { transform: translateX(5px); } }
+
+        #toast { transition: opacity .25s, transform .25s; }
+        #toast.hidden-toast { opacity: 0; transform: translate(-50%, -12px); pointer-events: none; }
     </style>
 </head>
-<body class="antialiased h-[100dvh] flex flex-col overflow-hidden">
+<body class="antialiased min-h-[100dvh]">
 
-    <!-- Back Button -->
-    <div id="backBtnContainer" class="hidden fixed top-6 left-4 z-40">
-        <button id="mainBackBtn" onclick="switchTab('home')" class="w-12 h-12 rounded-full bg-bgSurface border border-borderBase flex items-center justify-center text-textMain hover:bg-bgBase transition-colors shadow-lg">
-            <i class="fa-solid fa-arrow-left"></i>
-        </button>
-    </div>
-
-    <!-- Settings/Backup Button -->
-    <div id="settingsBtnContainer" class="fixed top-6 right-4 z-40">
-        <button onclick="openModal('settingsModal', 'settingsBox')" class="w-12 h-12 rounded-full bg-bgSurface border border-borderBase flex items-center justify-center text-textMain hover:bg-bgBase transition-colors shadow-lg">
-            <i class="fa-solid fa-gear"></i>
-        </button>
-    </div>
-    <input type="file" id="importFile" accept=".json" class="hidden" onchange="handleImport(event)">
-
-    <!-- Main Content Area -->
-    <main class="flex-grow overflow-y-auto no-scrollbar relative w-full flex flex-col">
-        <div class="max-w-4xl mx-auto px-4 py-6 flex-1 w-full flex flex-col">
-            
-            <!-- HOME DASHBOARD -->
-            <section id="homeSection" class="fade-in flex-1 flex flex-col gap-5 justify-center mt-12 pb-6">
-                <button onclick="switchTab('workout')" class="w-full flex-1 bg-bgSurface rounded-[2rem] shadow-xl border border-borderBase flex flex-col items-center justify-center gap-4 active:scale-[0.97] transition-all group overflow-hidden relative">
-                    <div class="absolute inset-0 bg-gradient-to-br from-brand/5 to-transparent opacity-80"></div>
-                    <div class="w-20 h-20 rounded-full bg-brand/10 text-brand flex items-center justify-center text-4xl group-active:scale-110 transition-transform shadow-[0_0_30px_rgba(79,70,229,0.15)]">
-                        <i class="fa-solid fa-dumbbell"></i>
-                    </div>
-                    <h2 class="text-3xl font-extrabold text-textMain tracking-tight z-10">Allenamento</h2>
-                </button>
-
-                <button onclick="switchTab('diet')" class="w-full flex-1 bg-bgSurface rounded-[2rem] shadow-xl border border-borderBase flex flex-col items-center justify-center gap-4 active:scale-[0.97] transition-all group overflow-hidden relative">
-                    <div class="absolute inset-0 bg-gradient-to-br from-emerald-500/5 to-transparent opacity-80"></div>
-                    <div class="w-20 h-20 rounded-full bg-emerald-500/10 text-emerald-500 flex items-center justify-center text-4xl group-active:scale-110 transition-transform shadow-[0_0_30px_rgba(16,185,129,0.15)]">
-                        <i class="fa-solid fa-utensils"></i>
-                    </div>
-                    <h2 class="text-3xl font-extrabold text-textMain tracking-tight z-10">Dieta e Macro</h2>
-                </button>
-
-                <button onclick="switchTab('db')" class="w-full flex-1 bg-bgSurface rounded-[2rem] shadow-xl border border-borderBase flex flex-col items-center justify-center gap-4 active:scale-[0.97] transition-all group overflow-hidden relative">
-                    <div class="absolute inset-0 bg-gradient-to-br from-brandAccent/5 to-transparent opacity-80"></div>
-                    <div class="w-20 h-20 rounded-full bg-brandAccent/10 text-brandAccent flex items-center justify-center text-4xl group-active:scale-110 transition-transform shadow-[0_0_30px_rgba(124,58,237,0.15)]">
-                        <i class="fa-solid fa-scale-balanced"></i>
-                    </div>
-                    <h2 class="text-3xl font-extrabold text-textMain tracking-tight z-10">Conversioni</h2>
-                </button>
-            </section>
-
-            <!-- WORKOUT SECTION (GRID) -->
-            <section id="workoutSection" class="hidden fade-in pt-20 pb-40">
-                <div class="flex justify-between items-center mb-6">
-                    <h2 class="text-3xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-brand to-brandAccent">Le tue Schede</h2>
-                    <button onclick="openModal('addWorkoutDayModal', 'addWorkoutDayBox')" class="text-brand font-bold bg-brand/10 border border-brand/20 px-4 py-2.5 rounded-xl text-sm shadow-sm active:scale-95 transition-transform">
-                        + Nuovo Giorno
-                    </button>
-                </div>
-                <div id="workoutsGridContainer" class="grid grid-cols-2 gap-4"></div>
-            </section>
-
-            <!-- WORKOUT DAY DETAIL SECTION -->
-            <section id="workoutDayDetailSection" class="hidden fade-in pt-20 pb-40">
-                <div class="flex flex-col gap-2 mb-6">
-                    <h2 id="workoutDayDetailTitle" class="text-3xl font-extrabold text-textMain">Nome Giorno</h2>
-                    <div class="flex gap-2">
-                        <button onclick="promptAddEx(currentWorkoutDayIdx)" class="flex-1 text-white font-bold bg-brand py-2.5 rounded-xl text-sm shadow-md active:scale-95 transition-transform">
-                            + Nuovo Esercizio
-                        </button>
-                        <button onclick="duplicateWorkoutDay(currentWorkoutDayIdx)" class="w-11 h-11 flex items-center justify-center bg-bgSurface border border-borderBase text-textMain rounded-xl active:scale-95 transition-transform shadow-sm"><i class="fa-solid fa-copy"></i></button>
-                        <button onclick="deleteWorkoutDay(currentWorkoutDayIdx)" class="w-11 h-11 flex items-center justify-center bg-rose-50 text-rose-500 border border-rose-200 rounded-xl active:scale-95 transition-transform shadow-sm"><i class="fa-solid fa-trash"></i></button>
-                    </div>
-                </div>
-                <div id="workoutsDetailContainer" class="space-y-4"></div>
-            </section>
-
-            <!-- DIET SECTION (GRID) -->
-            <section id="dietSection" class="hidden fade-in pt-20 pb-12">
-                <div class="flex justify-between items-center mb-6">
-                    <h2 class="text-3xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-emerald-500 to-emerald-700">Settimana</h2>
-                </div>
-                <div id="dietGridContainer" class="grid grid-cols-2 gap-4"></div>
-            </section>
-
-            <!-- DIET DAY DETAIL SECTION -->
-            <section id="dietDayDetailSection" class="hidden fade-in pt-20 pb-12">
-                <div class="flex flex-col gap-2 mb-6">
-                    <h2 id="dietDayDetailTitle" class="text-3xl font-extrabold text-textMain">Nome Giorno</h2>
-                    <div id="dietDayDetailMacros" class="flex gap-3 text-xs font-extrabold bg-bgBase border border-borderBase px-4 py-3 rounded-xl justify-center shadow-sm">
-                        <!-- Macros populated dynamically -->
-                    </div>
-                </div>
-                <div id="dietDayMealsContainer" class="space-y-4"></div>
-                <button onclick="promptAddMeal(currentDietDay)" class="mt-4 w-full border-2 border-dashed border-borderBase text-textMuted hover:text-textMain hover:border-textMuted transition-colors py-4 rounded-2xl text-sm font-bold tracking-widest bg-bgSurface shadow-sm"><i class="fa-solid fa-plus mr-2"></i> AGGIUNGI PASTO</button>
-            </section>
-
-            <!-- CONVERSIONS SECTION -->
-            <section id="dbSection" class="hidden fade-in pt-20 pb-12 space-y-6">
-                <!-- Smart Converter -->
-                <div class="bg-bgSurface rounded-3xl p-6 shadow-xl border border-borderBase relative overflow-hidden">
-                    <div class="absolute top-0 right-0 w-32 h-32 bg-brandAccent/10 rounded-bl-full"></div>
-                    <h3 class="font-bold text-xl mb-5 flex items-center gap-2 text-textMain relative z-10"><i class="fa-solid fa-wand-magic-sparkles text-brandAccent"></i> Convertitore Smart</h3>
-                    
-                    <div class="space-y-4 relative z-10">
-                        <select id="smartCalcCat" onchange="updateSmartDropdown()" class="w-full bg-bgBase border border-borderBase rounded-2xl px-4 py-3.5 text-sm font-semibold shadow-inner focus:border-brandAccent transition-colors">
-                            <option value="">Cosa vuoi calcolare?</option>
-                            <option value="Carboidrati">Carboidrati</option>
-                            <option value="Proteine">Proteine</option>
-                            <option value="Grassi">Grassi</option>
-                        </select>
-
-                        <div class="flex gap-2">
-                            <select id="smartCalcFood" class="flex-grow bg-bgBase border border-borderBase rounded-2xl px-4 py-3.5 text-sm font-semibold disabled:opacity-50 shadow-inner focus:border-brandAccent transition-colors">
-                                <option value="">Alimento Base</option>
-                            </select>
-                            <input type="number" id="smartCalcGrams" placeholder="Grammi" class="w-24 bg-bgBase border border-borderBase rounded-2xl px-4 py-3.5 text-sm font-semibold text-center placeholder-textMuted shadow-inner focus:border-brandAccent transition-colors" />
-                        </div>
-
-                        <button onclick="findAlternatives()" class="w-full bg-gradient-to-r from-brand to-brandAccent text-white py-4 rounded-2xl font-bold active:scale-95 transition-transform shadow-[0_10px_20px_rgba(79,70,229,0.25)]">
-                            Genera Alternative
-                        </button>
-
-                        <div id="smartResultList" class="hidden mt-4 space-y-2"></div>
-                    </div>
-                </div>
-
-                <!-- Custom DB -->
-                <div class="bg-bgSurface rounded-3xl p-6 shadow-xl border border-borderBase relative overflow-hidden">
-                    <div class="flex justify-between items-center mb-5 relative z-10">
-                        <h3 class="font-bold text-xl text-textMain flex items-center gap-2"><i class="fa-solid fa-database text-brand"></i> Mio Database</h3>
-                        <button onclick="openModal('addFoodModal', 'addFoodBox')" class="w-10 h-10 rounded-full bg-brand/10 border border-brand/20 text-brand flex items-center justify-center hover:bg-brand/20 active:scale-95 transition-all">
-                            <i class="fa-solid fa-plus text-sm"></i>
-                        </button>
-                    </div>
-                    <div id="foodList" class="space-y-2 relative z-10"></div>
-                </div>
-            </section>
+    <!-- HEADER -->
+    <header class="app-header sticky top-0 z-30 bg-bg/80 backdrop-blur-xl border-b border-line/60">
+        <div class="max-w-2xl mx-auto h-14 px-2 flex items-center gap-1">
+            <button id="backBtn" class="icon-btn invisible" onclick="goBack()" aria-label="Indietro"><i class="fa-solid fa-arrow-left"></i></button>
+            <div id="headerTitleWrap" class="flex-1 min-w-0 text-center transition-opacity duration-200">
+                <p id="headerEyebrow" class="text-[10px] font-bold uppercase tracking-[0.18em] text-muted leading-none h-3"></p>
+                <h1 id="headerTitle" class="text-base font-extrabold truncate leading-tight mt-0.5">Workout</h1>
+            </div>
+            <button class="icon-btn" onclick="openSettings()" aria-label="Impostazioni"><i class="fa-solid fa-gear"></i></button>
         </div>
+    </header>
+
+    <main class="max-w-2xl mx-auto px-4 pt-5">
+
+        <!-- HOME -->
+        <section id="view-home" class="view hidden"></section>
+
+        <!-- SCHEDE -->
+        <section id="view-workout" class="view hidden">
+            <div class="flex items-end justify-between mb-5">
+                <div>
+                    <p class="text-xs font-bold uppercase tracking-widest text-brand">Allenamento</p>
+                    <h2 class="text-3xl font-extrabold tracking-tight">Le tue schede</h2>
+                </div>
+                <button onclick="addWorkoutDay()" class="btn-soft px-4 py-2.5 text-sm text-brand"><i class="fa-solid fa-plus"></i> Scheda</button>
+            </div>
+            <div id="workoutGrid" class="grid grid-cols-2 gap-3"></div>
+        </section>
+
+        <!-- DETTAGLIO SCHEDA -->
+        <section id="view-workoutDay" class="view hidden">
+            <div class="flex items-start gap-2 mb-4">
+                <div class="flex-1 min-w-0">
+                    <p class="text-xs font-bold uppercase tracking-widest text-brand">Scheda</p>
+                    <h2 id="workoutDayTitle" class="text-3xl font-extrabold tracking-tight break-words"></h2>
+                    <p id="workoutDaySub" class="text-sm text-muted font-medium mt-0.5"></p>
+                </div>
+                <button onclick="renameWorkoutDay()" class="icon-btn mt-4" aria-label="Rinomina"><i class="fa-solid fa-pen text-sm"></i></button>
+            </div>
+            <div class="flex gap-2 mb-5">
+                <button onclick="promptAddEx()" class="btn-primary flex-1 !w-auto py-3 text-sm"><i class="fa-solid fa-plus"></i> Nuovo esercizio</button>
+                <button onclick="duplicateWorkoutDay()" class="btn-soft w-12" aria-label="Duplica scheda"><i class="fa-solid fa-copy"></i></button>
+                <button onclick="deleteWorkoutDay()" class="btn-soft w-12 !text-rose-500" aria-label="Elimina scheda"><i class="fa-solid fa-trash"></i></button>
+            </div>
+            <div id="exerciseList" class="space-y-3"></div>
+        </section>
+
+        <!-- DIETA SETTIMANALE -->
+        <section id="view-diet" class="view hidden">
+            <div class="mb-5">
+                <p class="text-xs font-bold uppercase tracking-widest text-emerald-500">Dieta e macro</p>
+                <h2 class="text-3xl font-extrabold tracking-tight">Settimana</h2>
+            </div>
+            <div id="dietGrid" class="grid grid-cols-2 gap-3"></div>
+        </section>
+
+        <!-- DETTAGLIO GIORNO DIETA -->
+        <section id="view-dietDay" class="view hidden">
+            <div class="mb-4">
+                <p class="text-xs font-bold uppercase tracking-widest text-emerald-500">Dieta</p>
+                <h2 id="dietDayTitle" class="text-3xl font-extrabold tracking-tight"></h2>
+            </div>
+            <div id="dietDayMacros" class="grid grid-cols-3 gap-2 mb-5"></div>
+            <div id="mealList" class="space-y-3"></div>
+            <button onclick="addMeal()" class="mt-3 w-full border-2 border-dashed border-line text-muted hover:text-ink hover:border-muted/50 transition py-4 rounded-3xl text-sm font-bold"><i class="fa-solid fa-plus mr-2"></i>Aggiungi pasto</button>
+        </section>
+
+        <!-- CONVERSIONI -->
+        <section id="view-db" class="view hidden space-y-4">
+            <div>
+                <p class="text-xs font-bold uppercase tracking-widest text-accent">Strumenti</p>
+                <h2 class="text-3xl font-extrabold tracking-tight">Conversioni</h2>
+            </div>
+
+            <div class="card p-5 relative overflow-hidden">
+                <div class="absolute -top-10 -right-10 w-36 h-36 bg-accent/10 rounded-full"></div>
+                <h3 class="relative font-extrabold text-lg mb-1 flex items-center gap-2"><i class="fa-solid fa-wand-magic-sparkles text-accent"></i> Convertitore smart</h3>
+                <p class="relative text-sm text-muted mb-4">Trova quanti grammi di un altro alimento danno lo stesso macro.</p>
+                <form class="relative space-y-3" onsubmit="event.preventDefault(); findAlternatives()">
+                    <div id="smartCatSeg" class="seg-group">
+                        <button type="button" class="seg" data-cat="Carboidrati" onclick="setSmartCat('Carboidrati')">Carboidrati</button>
+                        <button type="button" class="seg" data-cat="Proteine" onclick="setSmartCat('Proteine')">Proteine</button>
+                        <button type="button" class="seg" data-cat="Grassi" onclick="setSmartCat('Grassi')">Grassi</button>
+                    </div>
+                    <div class="flex gap-2">
+                        <select id="smartFood" class="field flex-1 min-w-0 disabled:opacity-50" disabled>
+                            <option value="">Alimento di partenza</option>
+                        </select>
+                        <input type="text" inputmode="decimal" id="smartGrams" placeholder="g" class="field !w-24 text-center">
+                    </div>
+                    <button type="submit" class="btn-primary"><i class="fa-solid fa-arrows-rotate"></i> Genera alternative</button>
+                </form>
+                <div id="smartResult" class="relative hidden mt-4"></div>
+            </div>
+
+            <div class="card p-5">
+                <div class="flex justify-between items-center mb-4">
+                    <div>
+                        <h3 class="font-extrabold text-lg flex items-center gap-2"><i class="fa-solid fa-database text-brand"></i> Il mio database</h3>
+                        <p class="text-sm text-muted">Alimenti personalizzati</p>
+                    </div>
+                    <button onclick="promptAddFood()" class="w-10 h-10 rounded-full bg-brand/10 text-brand flex items-center justify-center active:scale-90 transition" aria-label="Aggiungi alimento"><i class="fa-solid fa-plus"></i></button>
+                </div>
+                <div id="foodList" class="space-y-2"></div>
+            </div>
+        </section>
     </main>
 
-    <!-- FLOATING TIMER -->
-    <div id="floatingTimer" class="timer-hidden fixed bottom-6 left-4 right-4 bg-bgSurface border border-borderBase text-textMain rounded-3xl shadow-2xl p-4 z-40 backdrop-blur-xl bg-opacity-95">
-        <div class="flex items-center justify-between">
+    <!-- BOTTOM NAV -->
+    <nav class="bottom-nav fixed bottom-0 inset-x-0 z-30 bg-surface/85 backdrop-blur-xl border-t border-line">
+        <div class="max-w-2xl mx-auto h-[68px] grid grid-cols-4">
+            <button class="nav-item flex flex-col items-center justify-center gap-0.5 text-muted transition" data-nav="home" onclick="navTo('home')">
+                <span class="nav-pill w-14 h-8 rounded-full flex items-center justify-center transition"><i class="fa-solid fa-house"></i></span>
+                <span class="text-[11px] font-bold">Home</span>
+            </button>
+            <button class="nav-item flex flex-col items-center justify-center gap-0.5 text-muted transition" data-nav="workout" onclick="navTo('workout')">
+                <span class="nav-pill w-14 h-8 rounded-full flex items-center justify-center transition"><i class="fa-solid fa-dumbbell"></i></span>
+                <span class="text-[11px] font-bold">Allenamento</span>
+            </button>
+            <button class="nav-item flex flex-col items-center justify-center gap-0.5 text-muted transition" data-nav="diet" onclick="navTo('diet')">
+                <span class="nav-pill w-14 h-8 rounded-full flex items-center justify-center transition"><i class="fa-solid fa-utensils"></i></span>
+                <span class="text-[11px] font-bold">Dieta</span>
+            </button>
+            <button class="nav-item flex flex-col items-center justify-center gap-0.5 text-muted transition" data-nav="db" onclick="navTo('db')">
+                <span class="nav-pill w-14 h-8 rounded-full flex items-center justify-center transition"><i class="fa-solid fa-scale-balanced"></i></span>
+                <span class="text-[11px] font-bold">Conversioni</span>
+            </button>
+        </div>
+    </nav>
+
+    <!-- TIMER -->
+    <div id="timer" class="timer-hidden fixed left-3 right-3 z-20 max-w-2xl mx-auto">
+        <div class="card !rounded-[1.75rem] p-3 bg-surface/95 backdrop-blur-xl shadow-2xl overflow-hidden relative">
             <div class="flex items-center gap-3">
-                <div class="w-12 h-12 rounded-full bg-bgBase border border-borderBase flex items-center justify-center text-xl text-brand shadow-inner">
-                    <i class="fa-solid fa-stopwatch"></i>
+                <div class="flex-1 min-w-0 pl-2">
+                    <div id="timerDisplay" class="text-[2rem] font-mono font-bold leading-none tracking-tight tabular-nums">00:00</div>
+                    <div id="timerLabel" class="text-[10px] font-bold uppercase tracking-widest mt-1 text-accent truncate">Cronometro</div>
                 </div>
+                <button onclick="toggleTimerSettings()" class="w-11 h-11 rounded-full bg-inset border border-line flex items-center justify-center text-muted active:scale-90 transition" aria-label="Impostazioni timer"><i class="fa-solid fa-sliders"></i></button>
+                <button onclick="resetTimer()" class="w-11 h-11 rounded-full bg-inset border border-line flex items-center justify-center text-rose-500 active:scale-90 transition" aria-label="Azzera timer"><i class="fa-solid fa-rotate-left"></i></button>
+                <button id="timerPlayBtn" onclick="toggleTimer()" class="w-14 h-14 rounded-full bg-brand text-white text-lg flex items-center justify-center shadow-lg shadow-brand/40 active:scale-90 transition" aria-label="Avvia/Pausa"><i class="fa-solid fa-play"></i></button>
+            </div>
+            <div id="timerSettings" class="expander">
                 <div>
-                    <div id="timerDisplay" class="text-3xl font-extrabold font-mono leading-none tracking-tight">00:00</div>
-                    <div id="timerModeText" class="text-[10px] text-brandAccent font-bold uppercase tracking-widest mt-1">Libero</div>
+                    <div class="pt-3 mt-3 border-t border-line space-y-3">
+                        <div class="seg-group">
+                            <button id="tModeFree" class="seg active" onclick="setTimerMode('free')">Cronometro</button>
+                            <button id="tModeInt" class="seg" onclick="setTimerMode('interval')">Circuito</button>
+                        </div>
+                        <div id="intervalInputs" class="hidden space-y-2">
+                            <div class="flex items-center gap-2 bg-inset p-2 rounded-2xl border border-line">
+                                <span class="w-8 h-8 rounded-full bg-brand/10 text-brand flex items-center justify-center text-xs"><i class="fa-solid fa-layer-group"></i></span>
+                                <span class="text-[11px] font-bold uppercase tracking-wider text-muted w-14">Serie</span>
+                                <input type="number" inputmode="numeric" id="tSets" min="1" class="field !py-2 !px-2 text-center font-mono" onchange="saveTimerCfg()">
+                            </div>
+                            <div class="flex items-center gap-2 bg-inset p-2 rounded-2xl border border-line">
+                                <span class="w-8 h-8 rounded-full bg-emerald-500/10 text-emerald-500 flex items-center justify-center text-xs"><i class="fa-solid fa-person-running"></i></span>
+                                <span class="text-[11px] font-bold uppercase tracking-wider text-muted w-14">Lavoro</span>
+                                <input type="number" inputmode="numeric" id="tWorkMin" min="0" placeholder="min" class="field !py-2 !px-2 text-center font-mono" onchange="saveTimerCfg()">
+                                <span class="font-bold text-muted">:</span>
+                                <input type="number" inputmode="numeric" id="tWorkSec" min="0" max="59" placeholder="sec" class="field !py-2 !px-2 text-center font-mono" onchange="saveTimerCfg()">
+                            </div>
+                            <div class="flex items-center gap-2 bg-inset p-2 rounded-2xl border border-line">
+                                <span class="w-8 h-8 rounded-full bg-amber-500/10 text-amber-500 flex items-center justify-center text-xs"><i class="fa-solid fa-bed"></i></span>
+                                <span class="text-[11px] font-bold uppercase tracking-wider text-muted w-14">Pausa</span>
+                                <input type="number" inputmode="numeric" id="tRestMin" min="0" placeholder="min" class="field !py-2 !px-2 text-center font-mono" onchange="saveTimerCfg()">
+                                <span class="font-bold text-muted">:</span>
+                                <input type="number" inputmode="numeric" id="tRestSec" min="0" max="59" placeholder="sec" class="field !py-2 !px-2 text-center font-mono" onchange="saveTimerCfg()">
+                            </div>
+                        </div>
+                    </div>
                 </div>
             </div>
-            <div class="flex gap-2">
-                <button onclick="toggleTimerSettings()" class="w-12 h-12 rounded-full bg-bgBase border border-borderBase hover:bg-borderBase flex items-center justify-center transition-colors shadow-inner">
-                    <i class="fa-solid fa-sliders text-textMuted"></i>
-                </button>
-                <button onclick="toggleTimer()" id="timerPlayBtn" class="w-12 h-12 rounded-full bg-brand text-white flex items-center justify-center shadow-[0_0_20px_rgba(79,70,229,0.4)] active:scale-90 transition-transform">
-                    <i class="fa-solid fa-play"></i>
-                </button>
-                <button onclick="resetTimer()" class="w-12 h-12 rounded-full bg-bgBase border border-borderBase hover:bg-borderBase flex items-center justify-center text-rose-500 transition-colors shadow-inner">
-                    <i class="fa-solid fa-rotate-left"></i>
-                </button>
-            </div>
-        </div>
-
-        <div id="timerSettings" class="hidden mt-4 pt-4 border-t border-borderBase space-y-4">
-            <div class="flex gap-4 bg-bgBase p-1.5 rounded-xl border border-borderBase shadow-inner">
-                <button onclick="setTimerMode('free')" id="tModeFree" class="flex-1 py-2 text-xs font-bold bg-bgSurface border border-borderBase rounded-lg text-textMain shadow-sm">Libero</button>
-                <button onclick="setTimerMode('interval')" id="tModeInt" class="flex-1 py-2 text-xs font-bold text-textMuted hover:text-textMain rounded-lg transition-colors">Circuito</button>
-            </div>
-            <div id="intervalInputs" class="hidden flex-col gap-3">
-                <div class="flex gap-2 items-center bg-bgBase p-2 rounded-xl border border-borderBase shadow-inner">
-                    <div class="w-8 h-8 rounded-full bg-brand/10 text-brand flex items-center justify-center text-xs"><i class="fa-solid fa-layer-group"></i></div>
-                    <label class="text-[10px] text-textMuted uppercase w-12 font-bold tracking-wider">Serie</label>
-                    <input type="number" id="tSets" value="3" class="w-full bg-bgSurface border border-borderBase rounded-lg px-2 py-2 text-center font-mono font-bold text-textMain focus:border-brand">
-                </div>
-                <div class="flex gap-2 items-center bg-bgBase p-2 rounded-xl border border-borderBase shadow-inner">
-                    <div class="w-8 h-8 rounded-full bg-emerald-500/10 text-emerald-500 flex items-center justify-center text-xs"><i class="fa-solid fa-person-running"></i></div>
-                    <label class="text-[10px] text-textMuted uppercase w-12 font-bold tracking-wider">Lavoro</label>
-                    <input type="number" id="tWorkMin" value="00" class="w-full bg-bgSurface border border-borderBase rounded-lg px-2 py-2 text-center font-mono font-bold text-textMain placeholder-textMuted/50 focus:border-emerald-500" placeholder="Min">
-                    <span class="text-textMuted font-bold">:</span>
-                    <input type="number" id="tWorkSec" value="45" class="w-full bg-bgSurface border border-borderBase rounded-lg px-2 py-2 text-center font-mono font-bold text-textMain placeholder-textMuted/50 focus:border-emerald-500" placeholder="Sec">
-                </div>
-                <div class="flex gap-2 items-center bg-bgBase p-2 rounded-xl border border-borderBase shadow-inner">
-                    <div class="w-8 h-8 rounded-full bg-amber-500/10 text-amber-500 flex items-center justify-center text-xs"><i class="fa-solid fa-bed"></i></div>
-                    <label class="text-[10px] text-textMuted uppercase w-12 font-bold tracking-wider">Pausa</label>
-                    <input type="number" id="tRestMin" value="01" class="w-full bg-bgSurface border border-borderBase rounded-lg px-2 py-2 text-center font-mono font-bold text-textMain placeholder-textMuted/50 focus:border-amber-500" placeholder="Min">
-                    <span class="text-textMuted font-bold">:</span>
-                    <input type="number" id="tRestSec" value="30" class="w-full bg-bgSurface border border-borderBase rounded-lg px-2 py-2 text-center font-mono font-bold text-textMain placeholder-textMuted/50 focus:border-amber-500" placeholder="Sec">
-                </div>
+            <div class="absolute left-0 bottom-0 h-1 w-full bg-transparent">
+                <div id="timerProgress" class="h-full bg-brand transition-[width] duration-200 ease-linear" style="width:0%"></div>
             </div>
         </div>
     </div>
 
-    <!-- MODALS -->
-    <!-- Settings & Backup Modal -->
-    <div id="settingsModal" class="fixed inset-0 modal-overlay hidden z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 opacity-0 transition-opacity">
-        <div id="settingsBox" class="bg-bgSurface border-t border-x sm:border-b border-borderBase rounded-t-[2rem] sm:rounded-3xl p-6 w-full max-w-sm translate-y-full sm:translate-y-0 transition-transform shadow-2xl">
-            <div class="flex justify-between items-center mb-6">
-                <h3 class="text-xl font-bold text-textMain">Impostazioni</h3>
-                <button onclick="closeModal('settingsModal')"><i class="fa-solid fa-xmark text-xl text-textMuted hover:text-textMain"></i></button>
-            </div>
-            
-            <div class="space-y-4 mb-6">
-                <p class="text-xs text-textMuted mb-2">Salva i tuoi dati per non perderli o caricali su un altro dispositivo.</p>
-                <button onclick="exportData()" class="w-full bg-bgBase border border-brand text-brand py-4 rounded-2xl font-bold shadow-sm hover:bg-brand/5 transition-colors flex items-center justify-center gap-3">
-                    <i class="fa-solid fa-download"></i> Esporta Backup
-                </button>
-                <button onclick="triggerImport()" class="w-full bg-bgBase border border-emerald-500 text-emerald-500 py-4 rounded-2xl font-bold shadow-sm hover:bg-emerald-50 transition-colors flex items-center justify-center gap-3">
-                    <i class="fa-solid fa-upload"></i> Importa Backup
-                </button>
-            </div>
-        </div>
-    </div>
+    <!-- TOAST -->
+    <div id="toast" class="hidden-toast fixed left-1/2 -translate-x-1/2 z-[100] bg-ink text-bg text-sm font-bold px-4 py-2.5 rounded-full shadow-xl flex items-center gap-2" style="top: calc(env(safe-area-inset-top) + 64px)"></div>
 
-    <!-- Generic Message Modal -->
-    <div id="msgModal" class="fixed inset-0 modal-overlay hidden z-[60] flex items-center justify-center p-4 opacity-0 transition-opacity">
-        <div id="msgBox" class="bg-bgSurface border border-borderBase rounded-3xl p-6 w-full max-w-xs text-center scale-95 transition-transform shadow-2xl">
-            <h3 id="msgTitle" class="text-lg font-bold mb-2 text-textMain">Avviso</h3>
-            <p id="msgText" class="text-sm text-textMuted mb-6">Testo</p>
-            <div id="msgBtns" class="flex flex-col gap-3"></div>
-        </div>
-    </div>
+    <input type="file" id="importFile" accept=".json,application/json" class="hidden" onchange="handleImport(event)">
 
-    <!-- Add Workout Day Modal -->
-    <div id="addWorkoutDayModal" class="fixed inset-0 modal-overlay hidden z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 opacity-0 transition-opacity">
-        <div id="addWorkoutDayBox" class="bg-bgSurface border-t border-x sm:border-b border-borderBase rounded-t-[2rem] sm:rounded-3xl p-6 w-full max-w-sm translate-y-full sm:translate-y-0 transition-transform shadow-2xl">
-            <div class="flex justify-between items-center mb-6">
-                <h3 class="text-xl font-bold text-textMain">Nuovo Giorno</h3>
-                <button onclick="closeModal('addWorkoutDayModal')"><i class="fa-solid fa-xmark text-xl text-textMuted hover:text-textMain"></i></button>
-            </div>
-            <input type="text" id="workoutDayName" placeholder="Es: Petto e Dorso" class="w-full bg-bgBase border border-borderBase rounded-2xl px-4 py-4 text-sm font-semibold mb-6 placeholder-textMuted focus:border-brand shadow-inner">
-            <button onclick="saveWorkoutDay()" class="w-full bg-gradient-to-r from-brand to-brandAccent text-white py-4 rounded-2xl font-bold shadow-[0_10px_20px_rgba(79,70,229,0.25)] active:scale-95 transition-transform">Crea Giornata</button>
-        </div>
-    </div>
+    <!-- ============ MODALI ============ -->
 
-    <!-- Add Exercise Modal -->
-    <div id="addExModal" class="fixed inset-0 modal-overlay hidden z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 opacity-0 transition-opacity">
-        <div id="addExBox" class="bg-bgSurface border-t border-x sm:border-b border-borderBase rounded-t-[2rem] sm:rounded-3xl p-6 w-full max-w-sm translate-y-full sm:translate-y-0 transition-transform max-h-[90vh] overflow-y-auto no-scrollbar shadow-2xl">
+    <!-- Impostazioni -->
+    <div id="settingsModal" class="modal hidden" onclick="if(event.target===this) closeModal(this.id)">
+        <div class="sheet">
+            <div class="sheet-handle"></div>
             <div class="flex justify-between items-center mb-5">
-                <h3 id="addExTitle" class="text-xl font-bold text-textMain">Nuovo Esercizio</h3>
-                <button onclick="closeModal('addExModal')"><i class="fa-solid fa-xmark text-xl text-textMuted hover:text-textMain"></i></button>
+                <h3 class="text-xl font-extrabold">Impostazioni</h3>
+                <button type="button" class="icon-btn -mr-2" onclick="closeModal('settingsModal')" aria-label="Chiudi"><i class="fa-solid fa-xmark text-lg"></i></button>
             </div>
-            
-            <input type="hidden" id="exDayIdx">
-            <input type="hidden" id="exEditIdx">
-            <input type="hidden" id="exType" value="classic">
-
-            <div class="flex gap-4 mb-4 bg-bgBase p-1.5 rounded-xl border border-borderBase shadow-inner">
-                <button id="typeClassic" onclick="setExType('classic')" class="flex-1 py-2 text-xs font-bold bg-bgSurface border border-borderBase text-textMain shadow-sm rounded-lg transition-all">Classico</button>
-                <button id="typeSuper" onclick="setExType('superset')" class="flex-1 py-2 text-xs font-bold text-textMuted rounded-lg hover:text-textMain transition-all">Superset</button>
+            <p class="field-label">Tema</p>
+            <div id="themeSeg" class="seg-group mb-6">
+                <button class="seg" data-theme="auto" onclick="setTheme('auto')"><i class="fa-solid fa-circle-half-stroke mr-1"></i> Auto</button>
+                <button class="seg" data-theme="light" onclick="setTheme('light')"><i class="fa-solid fa-sun mr-1"></i> Chiaro</button>
+                <button class="seg" data-theme="dark" onclick="setTheme('dark')"><i class="fa-solid fa-moon mr-1"></i> Scuro</button>
             </div>
+            <p class="field-label">Backup</p>
+            <p class="text-sm text-muted mb-3 ml-1">I dati restano solo su questo dispositivo. Esporta un backup per non perderli o per trasferirli su un altro telefono.</p>
+            <div class="grid grid-cols-2 gap-2">
+                <button onclick="exportData()" class="btn-soft py-3.5 !text-brand"><i class="fa-solid fa-download"></i> Esporta</button>
+                <button onclick="triggerImport()" class="btn-soft py-3.5 !text-emerald-500"><i class="fa-solid fa-upload"></i> Importa</button>
+            </div>
+            <p id="appVersion" class="text-center text-xs text-muted mt-6"></p>
+        </div>
+    </div>
 
-            <div class="space-y-3 mb-6">
+    <!-- Conferma / Avviso -->
+    <div id="dialogModal" class="modal center hidden" onclick="if(event.target===this) closeModal(this.id)">
+        <div class="sheet text-center">
+            <div id="dialogIcon" class="w-12 h-12 mx-auto mb-3 rounded-full flex items-center justify-center text-lg"></div>
+            <h3 id="dialogTitle" class="text-lg font-extrabold mb-1.5"></h3>
+            <p id="dialogText" class="text-sm text-muted mb-6"></p>
+            <div id="dialogBtns" class="flex flex-col gap-2"></div>
+        </div>
+    </div>
+
+    <!-- Input testo generico -->
+    <div id="promptModal" class="modal hidden" onclick="if(event.target===this) closeModal(this.id)">
+        <form class="sheet" onsubmit="event.preventDefault(); submitPrompt()">
+            <div class="sheet-handle"></div>
+            <div class="flex justify-between items-center mb-5">
+                <h3 id="promptTitle" class="text-xl font-extrabold"></h3>
+                <button type="button" class="icon-btn -mr-2" onclick="closeModal('promptModal')" aria-label="Chiudi"><i class="fa-solid fa-xmark text-lg"></i></button>
+            </div>
+            <label id="promptLabel" for="promptInput" class="field-label"></label>
+            <input id="promptInput" type="text" autocomplete="off" class="field mb-5" data-autofocus>
+            <button id="promptConfirm" type="submit" class="btn-primary">Salva</button>
+        </form>
+    </div>
+
+    <!-- Esercizio -->
+    <div id="exModal" class="modal hidden" onclick="if(event.target===this) closeModal(this.id)">
+        <form class="sheet" onsubmit="event.preventDefault(); saveExercise()">
+            <div class="sheet-handle"></div>
+            <div class="flex justify-between items-center mb-4">
+                <h3 id="exModalTitle" class="text-xl font-extrabold">Nuovo esercizio</h3>
+                <button type="button" class="icon-btn -mr-2" onclick="closeModal('exModal')" aria-label="Chiudi"><i class="fa-solid fa-xmark text-lg"></i></button>
+            </div>
+            <div class="seg-group mb-4">
+                <button type="button" id="typeClassic" class="seg active" onclick="setExType('classic')">Classico</button>
+                <button type="button" id="typeSuper" class="seg" onclick="setExType('superset')">Superset</button>
+            </div>
+            <div class="space-y-3 mb-5">
                 <div>
-                    <label id="labelEx1" class="text-[10px] text-brand uppercase font-bold tracking-wider mb-1 hidden">Esercizio 1</label>
-                    <input type="text" id="exName" placeholder="Nome (es. Panca Piana)" class="w-full bg-bgBase border border-borderBase rounded-2xl px-4 py-3 text-sm font-semibold placeholder-textMuted focus:border-brand shadow-inner">
-                    <input type="text" id="exSubName1" placeholder="Variante (opzionale)" class="w-full bg-bgBase border border-borderBase rounded-2xl px-4 py-3 text-sm font-semibold placeholder-textMuted focus:border-brand mt-2 hidden shadow-inner">
+                    <label for="exName" id="exNameLabel" class="field-label">Nome esercizio</label>
+                    <input type="text" id="exName" placeholder="Es. Panca piana" autocomplete="off" class="field" data-autofocus>
                 </div>
-                
-                <div id="supersetFields" class="hidden border-t border-borderBase pt-3">
-                    <label class="text-[10px] text-brandAccent uppercase font-bold tracking-wider mb-1 block">Esercizio 2</label>
-                    <input type="text" id="exSubName2" placeholder="Nome (es. Croci ai cavi)" class="w-full bg-bgBase border border-borderBase rounded-2xl px-4 py-3 text-sm font-semibold placeholder-textMuted focus:border-brandAccent shadow-inner">
-                    
-                    <div class="flex gap-2 mt-2">
-                        <input type="number" id="exReps2" placeholder="Reps 2" class="w-1/2 bg-bgBase border border-borderBase rounded-2xl px-3 py-3 text-sm font-semibold text-center placeholder-textMuted focus:border-brandAccent shadow-inner">
-                        <input type="number" id="exWeight2" placeholder="Kg 2" class="w-1/2 bg-bgBase border border-borderBase rounded-2xl px-3 py-3 text-sm font-semibold text-center placeholder-textMuted focus:border-brandAccent shadow-inner">
-                    </div>
+                <div id="superFields1" class="hidden">
+                    <label for="exSubName1" class="field-label !text-brand">Esercizio 1</label>
+                    <input type="text" id="exSubName1" placeholder="Es. Panca inclinata" autocomplete="off" class="field">
                 </div>
-                
-                <div class="flex gap-2">
-                    <input type="number" id="exSets" placeholder="Serie" class="w-1/3 bg-bgBase border border-borderBase rounded-2xl px-3 py-3 text-sm font-semibold text-center placeholder-textMuted focus:border-brand shadow-inner">
-                    <input type="number" id="exReps1" placeholder="Reps 1" class="w-1/3 bg-bgBase border border-borderBase rounded-2xl px-3 py-3 text-sm font-semibold text-center placeholder-textMuted focus:border-brand shadow-inner">
-                    <input type="number" id="exWeight1" placeholder="Kg 1" class="w-1/3 bg-bgBase border border-borderBase rounded-2xl px-3 py-3 text-sm font-semibold text-center placeholder-textMuted focus:border-brand shadow-inner">
+                <div class="grid grid-cols-3 gap-2">
+                    <div><label for="exSets" class="field-label">Serie</label><input type="number" inputmode="numeric" id="exSets" placeholder="3" class="field text-center"></div>
+                    <div><label for="exReps1" class="field-label">Reps</label><input type="text" id="exReps1" placeholder="10" class="field text-center"></div>
+                    <div><label for="exWeight1" class="field-label">Kg</label><input type="text" inputmode="decimal" id="exWeight1" placeholder="—" class="field text-center"></div>
                 </div>
-
-                <textarea id="exDesc" placeholder="Note (opzionale)" rows="2" class="w-full bg-bgBase border border-borderBase rounded-2xl px-4 py-3 text-sm font-semibold placeholder-textMuted focus:border-brand shadow-inner resize-none"></textarea>
-            </div>
-            
-            <button onclick="saveExercise()" class="w-full bg-gradient-to-r from-brand to-brandAccent text-white py-4 rounded-2xl font-bold shadow-[0_10px_20px_rgba(79,70,229,0.25)] active:scale-95 transition-transform">Salva Esercizio</button>
-        </div>
-    </div>
-
-    <!-- Log Session Modal -->
-    <div id="logSessionModal" class="fixed inset-0 modal-overlay hidden z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 opacity-0 transition-opacity">
-        <div id="logSessionBox" class="bg-bgSurface border-t border-x sm:border-b border-borderBase rounded-t-[2rem] sm:rounded-3xl p-6 w-full max-w-sm translate-y-full sm:translate-y-0 transition-transform shadow-2xl">
-            <div class="flex justify-between items-center mb-5">
-                <h3 class="text-xl font-bold text-textMain">Salva Sessione</h3>
-                <button onclick="closeModal('logSessionModal')"><i class="fa-solid fa-xmark text-xl text-textMuted hover:text-textMain"></i></button>
-            </div>
-            <input type="hidden" id="logDayIdx">
-            <input type="hidden" id="logExIdx">
-            
-            <div class="space-y-4 mb-6">
-                <div>
-                    <p id="logTitle1" class="text-sm font-bold text-brand mb-2"><i class="fa-solid fa-dumbbell"></i> Esercizio</p>
-                    <div class="flex gap-2">
-                        <input type="number" id="logWeight" placeholder="Peso (Kg)" class="w-1/2 bg-bgBase border border-borderBase rounded-2xl px-4 py-3.5 text-sm font-semibold placeholder-textMuted focus:border-brand shadow-inner text-center">
-                        <input type="number" id="logReps" placeholder="Ripetizioni" class="w-1/2 bg-bgBase border border-borderBase rounded-2xl px-4 py-3.5 text-sm font-semibold placeholder-textMuted focus:border-brand shadow-inner text-center">
-                    </div>
-                </div>
-                
-                <div id="logSupersetGroup" class="hidden border-t border-borderBase pt-4">
-                    <p id="logTitle2" class="text-sm font-bold text-brandAccent mb-2"><i class="fa-solid fa-dumbbell"></i> Esercizio 2</p>
-                    <div class="flex gap-2">
-                        <input type="number" id="logWeight2" placeholder="Peso (Kg)" class="w-1/2 bg-bgBase border border-borderBase rounded-2xl px-4 py-3.5 text-sm font-semibold placeholder-textMuted focus:border-brandAccent shadow-inner text-center">
-                        <input type="number" id="logReps2" placeholder="Ripetizioni" class="w-1/2 bg-bgBase border border-borderBase rounded-2xl px-4 py-3.5 text-sm font-semibold placeholder-textMuted focus:border-brandAccent shadow-inner text-center">
-                    </div>
-                </div>
-            </div>
-            
-            <button onclick="confirmLogSession()" class="w-full bg-gradient-to-r from-brand to-brandAccent text-white py-4 rounded-2xl font-bold shadow-[0_10px_20px_rgba(79,70,229,0.25)] active:scale-95 transition-transform">Salva nel Diario</button>
-        </div>
-    </div>
-
-    <!-- Add Meal Modal -->
-    <div id="addMealModal" class="fixed inset-0 modal-overlay hidden z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 opacity-0 transition-opacity">
-        <div id="addMealBox" class="bg-bgSurface border-t border-x sm:border-b border-borderBase rounded-t-[2rem] sm:rounded-3xl p-6 w-full max-w-sm translate-y-full sm:translate-y-0 transition-transform shadow-2xl">
-            <div class="flex justify-between items-center mb-6">
-                <h3 class="text-xl font-bold text-textMain">Nuovo Pasto</h3>
-                <button onclick="closeModal('addMealModal')"><i class="fa-solid fa-xmark text-xl text-textMuted hover:text-textMain"></i></button>
-            </div>
-            <input type="hidden" id="addMealDay">
-            <input type="text" id="addMealNameInput" placeholder="Es. Colazione, Spuntino..." class="w-full bg-bgBase border border-borderBase rounded-2xl px-4 py-4 text-sm font-semibold mb-6 placeholder-textMuted focus:border-emerald-500 shadow-inner">
-            <button onclick="confirmAddMeal()" class="w-full bg-emerald-500 text-white py-4 rounded-2xl font-bold shadow-[0_10px_20px_rgba(16,185,129,0.25)] active:scale-95 transition-transform">Aggiungi Pasto</button>
-        </div>
-    </div>
-
-    <!-- Add Diet Item Modal -->
-    <div id="addDietItemModal" class="fixed inset-0 modal-overlay hidden z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 opacity-0 transition-opacity">
-        <div id="addDietItemBox" class="bg-bgSurface border-t border-x sm:border-b border-borderBase rounded-t-[2rem] sm:rounded-3xl p-6 w-full max-w-sm translate-y-full sm:translate-y-0 transition-transform shadow-2xl">
-            <div class="flex justify-between items-center mb-6">
-                <h3 class="text-xl font-bold text-textMain">Nuovo Alimento</h3>
-                <button onclick="closeModal('addDietItemModal')"><i class="fa-solid fa-xmark text-xl text-textMuted hover:text-textMain"></i></button>
-            </div>
-            <input type="hidden" id="itemDayIdx">
-            <input type="hidden" id="itemMealIdx">
-            <div class="space-y-4 mb-6">
-                <select id="itemFoodSelect" class="w-full bg-bgBase border border-borderBase rounded-2xl px-4 py-3.5 text-sm font-semibold focus:border-emerald-500 shadow-inner max-w-full truncate overflow-hidden"></select>
-                <input type="number" id="itemGramsInput" placeholder="Grammi (es. 100)" class="w-full bg-bgBase border border-borderBase rounded-2xl px-4 py-3.5 text-sm font-semibold placeholder-textMuted focus:border-emerald-500 shadow-inner">
-            </div>
-            <button onclick="confirmAddDietItem()" class="w-full bg-emerald-500 text-white py-4 rounded-2xl font-bold shadow-[0_10px_20px_rgba(16,185,129,0.25)] active:scale-95 transition-transform">Inserisci Alimento</button>
-        </div>
-    </div>
-
-    <!-- Swap Food Modal -->
-    <div id="swapFoodModal" class="fixed inset-0 modal-overlay hidden z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 opacity-0 transition-opacity">
-        <div id="swapFoodBox" class="bg-bgSurface border-t border-x sm:border-b border-borderBase rounded-t-[2rem] sm:rounded-3xl p-6 w-full max-w-sm translate-y-full sm:translate-y-0 transition-transform max-h-[90vh] overflow-y-auto no-scrollbar shadow-2xl flex flex-col">
-            <div class="flex justify-between items-center mb-5 shrink-0">
-                <h3 class="text-xl font-bold text-textMain">Alternative</h3>
-                <button onclick="closeModal('swapFoodModal')"><i class="fa-solid fa-xmark text-xl text-textMuted hover:text-textMain"></i></button>
-            </div>
-            <div id="swapFoodInfo" class="bg-brand/10 border border-brand/20 p-4 rounded-2xl mb-4 text-center shrink-0 shadow-inner">
-                <!-- Populated dynamically -->
-            </div>
-            <div id="swapAlternativesList" class="space-y-2 overflow-y-auto flex-grow no-scrollbar pb-4">
-                <!-- Populated dynamically -->
-            </div>
-        </div>
-    </div>
-
-    <!-- Add Food Modal (Custom DB) -->
-    <div id="addFoodModal" class="fixed inset-0 modal-overlay hidden z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 opacity-0 transition-opacity">
-        <div id="addFoodBox" class="bg-bgSurface border-t border-x sm:border-b border-borderBase rounded-t-[2rem] sm:rounded-3xl p-6 w-full max-w-sm translate-y-full sm:translate-y-0 transition-transform shadow-2xl">
-            <div class="flex justify-between items-center mb-5">
-                <h3 class="text-xl font-bold text-textMain">Nuovo Alimento DB</h3>
-                <button onclick="closeModal('addFoodModal')"><i class="fa-solid fa-xmark text-xl text-textMuted hover:text-textMain"></i></button>
-            </div>
-            <div class="space-y-4 mb-6">
-                <input type="text" id="dbFoodName" placeholder="Nome alimento (es. Petto di Pollo)" class="w-full bg-bgBase border border-borderBase rounded-2xl px-4 py-3.5 text-sm font-semibold placeholder-textMuted focus:border-brand shadow-inner">
-                <select id="dbFoodCat" class="w-full bg-bgBase border border-borderBase rounded-2xl px-4 py-3.5 text-sm font-semibold focus:border-brand shadow-inner">
-                    <option value="Carboidrati">Carboidrati</option>
-                    <option value="Proteine">Proteine</option>
-                    <option value="Grassi">Grassi</option>
-                    <option value="Verdure">Verdure (0 macro)</option>
-                </select>
-                <input type="number" id="dbFoodMacro" placeholder="Grammi del macro principale (per 100g)" class="w-full bg-bgBase border border-borderBase rounded-2xl px-4 py-3.5 text-sm font-semibold placeholder-textMuted focus:border-brand shadow-inner">
-            </div>
-            <button onclick="saveDbFood()" class="w-full bg-gradient-to-r from-brand to-brandAccent text-white py-4 rounded-2xl font-bold shadow-[0_10px_20px_rgba(79,70,229,0.25)] active:scale-95 transition-transform">Salva nel Database</button>
-        </div>
-    </div>
-
-    <!-- CORE SCRIPT -->
-    <script>
-        const presetDb = [
-            // ==========================================
-            // CARBOIDRATI (Grammi di Carbo su 100g)
-            // ==========================================
-            // Pasta e Gnocchi
-            { name: "Pasta di Semola", category: "Carboidrati", macroValue: 73 },
-            { name: "Pasta Integrale", category: "Carboidrati", macroValue: 65 },
-            { name: "Pasta all'Uovo", category: "Carboidrati", macroValue: 68 },
-            { name: "Pasta di Riso", category: "Carboidrati", macroValue: 80 },
-            { name: "Pasta di Mais", category: "Carboidrati", macroValue: 79 },
-            { name: "Pasta di Farro", category: "Carboidrati", macroValue: 67 },
-            { name: "Pasta di Lenticchie/Piselli", category: "Carboidrati", macroValue: 50 },
-            { name: "Gnocchi di Patate (confezionati)", category: "Carboidrati", macroValue: 20 },
-            // Riso e Cereali
-            { name: "Riso Basmati", category: "Carboidrati", macroValue: 78 },
-            { name: "Riso Carnaroli / Arborio", category: "Carboidrati", macroValue: 80 },
-            { name: "Riso Integrale", category: "Carboidrati", macroValue: 74 },
-            { name: "Riso Venere (Nero)", category: "Carboidrati", macroValue: 72 },
-            { name: "Riso Rosso", category: "Carboidrati", macroValue: 74 },
-            { name: "Avena (Fiocchi)", category: "Carboidrati", macroValue: 60 },
-            { name: "Farina di Avena", category: "Carboidrati", macroValue: 60 },
-            { name: "Farro Perlato", category: "Carboidrati", macroValue: 67 },
-            { name: "Orzo Perlato", category: "Carboidrati", macroValue: 70 },
-            { name: "Quinoa", category: "Carboidrati", macroValue: 64 },
-            { name: "Cous Cous", category: "Carboidrati", macroValue: 77 },
-            { name: "Grano Saraceno", category: "Carboidrati", macroValue: 71 },
-            { name: "Polenta (Farina di Mais)", category: "Carboidrati", macroValue: 75 },
-            { name: "Cornflakes (classici)", category: "Carboidrati", macroValue: 81 },
-            // Pane e Sostituti
-            { name: "Pane Bianco", category: "Carboidrati", macroValue: 49 },
-            { name: "Pane Integrale", category: "Carboidrati", macroValue: 43 },
-            { name: "Pane di Segale", category: "Carboidrati", macroValue: 48 },
-            { name: "Pane Bauletto (industriale)", category: "Carboidrati", macroValue: 50 },
-            { name: "Piadina Romagnola", category: "Carboidrati", macroValue: 50 },
-            { name: "Gallette di Mais", category: "Carboidrati", macroValue: 77 },
-            { name: "Gallette di Riso", category: "Carboidrati", macroValue: 81 },
-            { name: "Fette Biscottate classiche", category: "Carboidrati", macroValue: 72 },
-            { name: "Fette Biscottate integrali", category: "Carboidrati", macroValue: 67 },
-            { name: "Taralli", category: "Carboidrati", macroValue: 60 },
-            { name: "Grissini", category: "Carboidrati", macroValue: 68 },
-            { name: "Crackers", category: "Carboidrati", macroValue: 70 },
-            // Tuberi (Patate)
-            { name: "Patate Classiche (con buccia)", category: "Carboidrati", macroValue: 17 },
-            { name: "Patate Novelle", category: "Carboidrati", macroValue: 15 },
-            { name: "Patate Dolci (Americane)", category: "Carboidrati", macroValue: 20 },
-            { name: "Patate Rosse", category: "Carboidrati", macroValue: 16 },
-            { name: "Manioca / Yuca", category: "Carboidrati", macroValue: 38 },
-            // Legumi Secchi (Pesati a crudo)
-            { name: "Ceci (Secchi)", category: "Carboidrati", macroValue: 47 },
-            { name: "Lenticchie (Secche)", category: "Carboidrati", macroValue: 51 },
-            { name: "Fagioli Borlotti/Cannellini (Secchi)", category: "Carboidrati", macroValue: 45 },
-            { name: "Piselli (Secchi)", category: "Carboidrati", macroValue: 45 },
-            // Legumi Cotti/In scatola (Sgocciolati)
-            { name: "Ceci (In scatola)", category: "Carboidrati", macroValue: 15 },
-            { name: "Lenticchie (In scatola)", category: "Carboidrati", macroValue: 12 },
-            { name: "Fagioli (In scatola)", category: "Carboidrati", macroValue: 14 },
-            { name: "Piselli (Surgelati/Scatola)", category: "Carboidrati", macroValue: 10 },
-            // Frutta (Zuccheri/Carbo)
-            { name: "Banana", category: "Carboidrati", macroValue: 23 },
-            { name: "Mela", category: "Carboidrati", macroValue: 14 },
-            { name: "Pera", category: "Carboidrati", macroValue: 15 },
-            { name: "Kiwi", category: "Carboidrati", macroValue: 15 },
-            { name: "Uva", category: "Carboidrati", macroValue: 18 },
-            { name: "Frutti di Bosco / Fragole", category: "Carboidrati", macroValue: 8 },
-            { name: "Arancia / Mandarino", category: "Carboidrati", macroValue: 9 },
-            { name: "Datteri secchi", category: "Carboidrati", macroValue: 75 },
-            { name: "Uvetta / Frutta disidratata", category: "Carboidrati", macroValue: 79 },
-            
-            // ==========================================
-            // PROTEINE (Grammi di Proteine su 100g)
-            // ==========================================
-            // Carni Bianche e Rosse
-            { name: "Petto di Pollo", category: "Proteine", macroValue: 31 },
-            { name: "Sovracosce di Pollo (senza pelle)", category: "Proteine", macroValue: 24 },
-            { name: "Fesa di Tacchino", category: "Proteine", macroValue: 29 },
-            { name: "Carne Bovina Magra (Filetto/Fesa)", category: "Proteine", macroValue: 22 },
-            { name: "Macinato di Manzo (Magro 5%)", category: "Proteine", macroValue: 21 },
-            { name: "Hamburger di Manzo", category: "Proteine", macroValue: 20 },
-            { name: "Vitello (Tagli magri)", category: "Proteine", macroValue: 20 },
-            { name: "Maiale (Arista magra/Filetto)", category: "Proteine", macroValue: 22 },
-            { name: "Carne di Cavallo", category: "Proteine", macroValue: 21 },
-            { name: "Carne di Coniglio", category: "Proteine", macroValue: 20 },
-            // Affettati
-            { name: "Bresaola", category: "Proteine", macroValue: 33 },
-            { name: "Prosciutto Crudo (sgrassato)", category: "Proteine", macroValue: 28 },
-            { name: "Prosciutto Cotto (Alta qualità)", category: "Proteine", macroValue: 20 },
-            { name: "Fesa di Tacchino/Pollo (a fette)", category: "Proteine", macroValue: 24 },
-            { name: "Speck (sgrassato)", category: "Proteine", macroValue: 28 },
-            // Pesce
-            { name: "Tonno Naturale (sgocciolato)", category: "Proteine", macroValue: 25 },
-            { name: "Tonno Sott'olio (sgocciolato)", category: "Proteine", macroValue: 26 },
-            { name: "Salmone Fresco", category: "Proteine", macroValue: 20 },
-            { name: "Salmone Affumicato", category: "Proteine", macroValue: 25 },
-            { name: "Merluzzo / Nasello", category: "Proteine", macroValue: 18 },
-            { name: "Branzino / Spigola", category: "Proteine", macroValue: 19 },
-            { name: "Orata", category: "Proteine", macroValue: 20 },
-            { name: "Pesce Spada", category: "Proteine", macroValue: 19 },
-            { name: "Sgombro", category: "Proteine", macroValue: 19 },
-            { name: "Sarde / Alici", category: "Proteine", macroValue: 20 },
-            { name: "Gamberi / Mazzancolle", category: "Proteine", macroValue: 18 },
-            { name: "Calamari / Seppie", category: "Proteine", macroValue: 15 },
-            { name: "Polpo", category: "Proteine", macroValue: 15 },
-            // Uova e Latticini
-            { name: "Uova Intere", category: "Proteine", macroValue: 13 },
-            { name: "Albume d'Uovo", category: "Proteine", macroValue: 11 },
-            { name: "Yogurt Greco 0%", category: "Proteine", macroValue: 10 },
-            { name: "Yogurt Greco 2%", category: "Proteine", macroValue: 10 },
-            { name: "Yogurt Greco 5%", category: "Proteine", macroValue: 9 },
-            { name: "Skyr", category: "Proteine", macroValue: 11 },
-            { name: "Fiocchi di Latte", category: "Proteine", macroValue: 12 },
-            { name: "Ricotta Vaccina", category: "Proteine", macroValue: 9 },
-            { name: "Parmigiano Reggiano / Grana", category: "Proteine", macroValue: 33 },
-            { name: "Mozzarella Light", category: "Proteine", macroValue: 18 },
-            { name: "Feta", category: "Proteine", macroValue: 14 },
-            { name: "Latte Scremato (per 100ml)", category: "Proteine", macroValue: 3.4 },
-            { name: "Latte Parz. Scremato (per 100ml)", category: "Proteine", macroValue: 3.3 },
-            // Alternative Vegetali e Integrazione
-            { name: "Tofu", category: "Proteine", macroValue: 16 },
-            { name: "Seitan", category: "Proteine", macroValue: 36 },
-            { name: "Tempeh", category: "Proteine", macroValue: 19 },
-            { name: "Soia Edamame", category: "Proteine", macroValue: 11 },
-            { name: "Burger Vegetale (Soia)", category: "Proteine", macroValue: 15 },
-            { name: "Proteine in Polvere (Whey)", category: "Proteine", macroValue: 80 },
-            { name: "Proteine Vegane (Pisello/Riso)", category: "Proteine", macroValue: 75 },
-
-            // ==========================================
-            // GRASSI (Grammi di Grassi su 100g)
-            // ==========================================
-            // Oli e Burri
-            { name: "Olio Extravergine (EVO)", category: "Grassi", macroValue: 100 },
-            { name: "Olio di Semi (Girasole/Arachidi)", category: "Grassi", macroValue: 100 },
-            { name: "Olio di Cocco", category: "Grassi", macroValue: 100 },
-            { name: "Burro Classico", category: "Grassi", macroValue: 81 },
-            { name: "Burro Chiarificato (Ghee)", category: "Grassi", macroValue: 99 },
-            // Frutta Secca (Noci e Semi)
-            { name: "Mandorle", category: "Grassi", macroValue: 50 },
-            { name: "Noci (Sgusciate)", category: "Grassi", macroValue: 65 },
-            { name: "Nocciole", category: "Grassi", macroValue: 61 },
-            { name: "Arachidi (non salate)", category: "Grassi", macroValue: 49 },
-            { name: "Pistacchi", category: "Grassi", macroValue: 45 },
-            { name: "Anacardi", category: "Grassi", macroValue: 44 },
-            { name: "Noci Macadamia", category: "Grassi", macroValue: 76 },
-            { name: "Noci Pecan", category: "Grassi", macroValue: 72 },
-            { name: "Pinoli", category: "Grassi", macroValue: 68 },
-            { name: "Semi di Chia", category: "Grassi", macroValue: 31 },
-            { name: "Semi di Lino", category: "Grassi", macroValue: 42 },
-            { name: "Semi di Zucca", category: "Grassi", macroValue: 49 },
-            { name: "Semi di Girasole", category: "Grassi", macroValue: 51 },
-            // Creme, Cioccolato e Altro
-            { name: "Burro d'Arachidi (100%)", category: "Grassi", macroValue: 50 },
-            { name: "Burro di Mandorle (100%)", category: "Grassi", macroValue: 53 },
-            { name: "Tahina (Crema di Sesamo)", category: "Grassi", macroValue: 53 },
-            { name: "Cioccolato Fondente 85%", category: "Grassi", macroValue: 46 },
-            { name: "Cioccolato Fondente 99%", category: "Grassi", macroValue: 50 },
-            { name: "Avocado", category: "Grassi", macroValue: 15 },
-            { name: "Olive Verdi", category: "Grassi", macroValue: 15 },
-            { name: "Olive Nere", category: "Grassi", macroValue: 25 },
-            { name: "Cocco essiccato (Rapè)", category: "Grassi", macroValue: 65 },
-            
-            // ==========================================
-            // VERDURE (Gestite liberamente: 0 macro)
-            // ==========================================
-            { name: "Asparagi", category: "Verdure", macroValue: 0 },
-            { name: "Broccoli", category: "Verdure", macroValue: 0 },
-            { name: "Carciofi", category: "Verdure", macroValue: 0 },
-            { name: "Carote", category: "Verdure", macroValue: 0 },
-            { name: "Cavolfiore", category: "Verdure", macroValue: 0 },
-            { name: "Cavolini di Bruxelles", category: "Verdure", macroValue: 0 },
-            { name: "Cetrioli", category: "Verdure", macroValue: 0 },
-            { name: "Cipolle", category: "Verdure", macroValue: 0 },
-            { name: "Fagiolini (Cornetti)", category: "Verdure", macroValue: 0 },
-            { name: "Finocchi", category: "Verdure", macroValue: 0 },
-            { name: "Funghi (Champignon/Porcini)", category: "Verdure", macroValue: 0 },
-            { name: "Insalata Mista / Lattuga", category: "Verdure", macroValue: 0 },
-            { name: "Melanzane", category: "Verdure", macroValue: 0 },
-            { name: "Peperoni", category: "Verdure", macroValue: 0 },
-            { name: "Pomodori / Pomodorini", category: "Verdure", macroValue: 0 },
-            { name: "Radicchio", category: "Verdure", macroValue: 0 },
-            { name: "Rucola", category: "Verdure", macroValue: 0 },
-            { name: "Sedano", category: "Verdure", macroValue: 0 },
-            { name: "Spinaci / Bieta", category: "Verdure", macroValue: 0 },
-            { name: "Zucca", category: "Verdure", macroValue: 0 },
-            { name: "Zucchine", category: "Verdure", macroValue: 0 }
-        ];
-
-        window.foodDb = [];
-        window.weeklyDiet = {
-            "Lunedì": [], "Martedì": [], "Mercoledì": [], "Giovedì": [], "Venerdì": [], "Sabato": [], "Domenica": []
-        };
-        window.workouts = []; 
-        window.currentWorkoutDayIdx = null;
-        window.currentDietDay = null;
-        window.currentView = 'home';
-
-        window.switchTab = (tab, fromHistory = false) => {
-            ['home', 'workout', 'diet', 'db', 'workoutDayDetail', 'dietDayDetail'].forEach(s => {
-                const el = document.getElementById(s + 'Section');
-                if(el) el.classList.add('hidden');
-            });
-            
-            document.getElementById(tab + 'Section').classList.remove('hidden');
-            
-            const backBtn = document.getElementById('backBtnContainer');
-            const mainBtn = document.getElementById('mainBackBtn');
-            
-            if(tab === 'home') {
-                backBtn.classList.add('hidden');
-            } else {
-                backBtn.classList.remove('hidden');
-                if (tab === 'workoutDayDetail') {
-                    mainBtn.onclick = () => switchTab('workout');
-                } else if (tab === 'dietDayDetail') {
-                    mainBtn.onclick = () => switchTab('diet');
-                } else {
-                    mainBtn.onclick = () => switchTab('home');
-                }
-            }
-
-            const timerUI = document.getElementById('floatingTimer');
-            if(tab === 'workout' || tab === 'workoutDayDetail') timerUI.classList.remove('timer-hidden');
-            else timerUI.classList.add('timer-hidden');
-
-            if(tab === 'workout') renderWorkoutsGrid();
-            if(tab === 'diet') renderDietGrid();
-            if(tab === 'db') { renderDb(); updateSmartDropdown(); }
-            
-            currentView = tab;
-
-            // Salva la schermata nella cronologia del telefono
-            if (!fromHistory) {
-                history.pushState({ tab: tab }, '', '#' + tab);
-            }
-        };
-
-        window.openModal = (id, boxId) => {
-            const modal = document.getElementById(id);
-            const box = document.getElementById(boxId);
-            modal.classList.remove('hidden');
-            requestAnimationFrame(() => {
-                modal.classList.remove('opacity-0');
-                if(box.classList.contains('translate-y-full')) box.classList.remove('translate-y-full', 'sm:translate-y-0');
-                if(box.classList.contains('scale-95')) box.classList.remove('scale-95');
-                box.classList.add(box.classList.contains('scale-95') ? 'scale-100' : 'translate-y-0');
-            });
-        };
-
-        window.closeModal = (id) => {
-            const modal = document.getElementById(id);
-            const box = modal.children[0];
-            modal.classList.add('opacity-0');
-            if(box.id.includes('msg')) {
-                box.classList.remove('scale-100'); box.classList.add('scale-95');
-            } else {
-                box.classList.remove('translate-y-0'); box.classList.add('translate-y-full', 'sm:translate-y-0');
-            }
-            setTimeout(() => modal.classList.add('hidden'), 300);
-        };
-
-        let confirmCb = null;
-        window.showMessage = (title, text, showCancel = false, cb = null) => {
-            document.getElementById('msgTitle').innerText = title;
-            document.getElementById('msgText').innerText = text;
-            const btns = document.getElementById('msgBtns');
-            if (showCancel) {
-                confirmCb = cb;
-                btns.innerHTML = `
-                    <button onclick="executeConfirm()" class="w-full bg-brand hover:bg-brand/90 text-white py-3.5 rounded-xl font-bold shadow-sm transition-colors">Conferma</button>
-                    <button onclick="closeModal('msgModal')" class="w-full bg-bgBase border border-borderBase text-textMain hover:bg-borderBase py-3.5 rounded-xl font-bold transition-colors mt-2">Annulla</button>
-                `;
-            } else {
-                btns.innerHTML = `<button onclick="closeModal('msgModal')" class="w-full bg-brand hover:bg-brand/90 text-white py-3.5 rounded-xl font-bold shadow-sm transition-colors">OK</button>`;
-            }
-            openModal('msgModal', 'msgBox');
-        };
-        window.executeConfirm = () => { if(confirmCb) confirmCb(); closeModal('msgModal'); };
-
-        function persistData() {
-            localStorage.setItem('workoutAppV1', JSON.stringify({
-                weeklyDiet: window.weeklyDiet, foodDb: window.foodDb, workouts: window.workouts
-            }));
-        }
-
-        function loadData() {
-            let data = localStorage.getItem('workoutAppV1');
-            if (!data) data = localStorage.getItem('mySigmaV3'); 
-            if (!data) data = localStorage.getItem('mySigmaV2'); 
-            
-            if (data) {
-                try {
-                    const p = JSON.parse(data);
-                    if (p.weeklyDiet) window.weeklyDiet = p.weeklyDiet;
-                    if (p.foodDb) window.foodDb = p.foodDb;
-                    if (p.workouts) window.workouts = p.workouts;
-                } catch(e){}
-            }
-        }
-
-        window.exportData = () => {
-            const data = localStorage.getItem('workoutAppV1') || '{}';
-            const blob = new Blob([data], {type: 'application/json'});
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = 'Workout_Backup.json';
-            a.click();
-            URL.revokeObjectURL(url);
-            closeModal('settingsModal');
-        };
-
-        window.triggerImport = () => { document.getElementById('importFile').click(); };
-
-        window.handleImport = (e) => {
-            const file = e.target.files[0];
-            if(!file) return;
-            const reader = new FileReader();
-            reader.onload = (event) => {
-                try {
-                    const json = JSON.parse(event.target.result);
-                    if(json.weeklyDiet || json.workouts || json.foodDb) {
-                        localStorage.setItem('workoutAppV1', JSON.stringify(json));
-                        loadData();
-                        switchTab('home');
-                        closeModal('settingsModal');
-                        showMessage('Successo', 'Dati importati correttamente!');
-                    } else showMessage('Errore', 'File non valido per Workout.');
-                } catch(err) { showMessage('Errore', 'Errore nella lettura del file.'); }
-                document.getElementById('importFile').value = '';
-            };
-            reader.readAsText(file);
-        };
-
-        window.renderWorkoutsGrid = () => {
-            const container = document.getElementById('workoutsGridContainer');
-            if(window.workouts.length === 0) {
-                container.innerHTML = `<div class="col-span-2 text-center p-8 text-textMuted bg-bgSurface rounded-[2rem] border border-borderBase shadow-xl"><i class="fa-solid fa-ghost text-4xl mb-3 text-borderBase"></i><br>Nessuna scheda presente.<br>Aggiungi un giorno.</div>`;
-                return;
-            }
-
-            container.innerHTML = window.workouts.map((day, dIdx) => {
-                return `
-                    <button onclick="openWorkoutDay(${dIdx})" class="bg-bgSurface rounded-[2rem] p-6 shadow-xl border border-borderBase flex flex-col items-center justify-center gap-3 active:scale-[0.97] transition-all text-center relative overflow-hidden group">
-                        <div class="absolute inset-0 bg-gradient-to-br from-brand/5 to-transparent opacity-50"></div>
-                        <div class="w-14 h-14 rounded-full bg-brand/10 text-brand flex items-center justify-center text-2xl group-active:scale-110 transition-transform">
-                            <i class="fa-solid fa-calendar-day"></i>
-                        </div>
-                        <div class="z-10">
-                            <h3 class="font-extrabold text-lg text-textMain leading-tight">${day.name}</h3>
-                            <p class="text-[11px] text-brand font-bold uppercase tracking-widest mt-1">${day.exercises.length} Esercizi</p>
-                        </div>
-                    </button>
-                `;
-            }).join('');
-        };
-
-        window.openWorkoutDay = (dIdx) => {
-            currentWorkoutDayIdx = dIdx;
-            renderWorkoutDay(dIdx);
-            switchTab('workoutDayDetail');
-        };
-
-        window.renderWorkoutDay = (dIdx) => {
-            const day = window.workouts[dIdx];
-            if(!day) { switchTab('workout'); return; }
-            
-            document.getElementById('workoutDayDetailTitle').innerText = day.name;
-            const container = document.getElementById('workoutsDetailContainer');
-            
-            let exHtml = day.exercises.map((ex, eIdx) => {
-                let historyHtml = '';
-                const hasHist1 = ex.history && ex.history.length > 0;
-                const hasHist2 = ex.type === 'superset' && ex.history2 && ex.history2.length > 0;
-                
-                if(hasHist1 || hasHist2) {
-                    let innerHist = '';
-                    if(ex.type === 'classic') {
-                        const rows = ex.history.map(h => `<tr class="border-b border-borderBase last:border-0 hover:bg-bgBase transition-colors"><td class="py-2.5 px-2 text-xs text-textMuted">${h.date}</td><td class="py-2.5 px-2 text-xs font-bold text-textMain text-right">${h.weight}kg x ${h.reps}</td></tr>`).join('');
-                        innerHist = `<table class="w-full">${rows}</table>`;
-                    } else {
-                        let r1 = hasHist1 ? ex.history.map(h => `<tr class="border-b border-borderBase/50 last:border-0 hover:bg-bgBase"><td class="py-2 px-1 text-[10px] text-textMuted">${h.date}</td><td class="py-2 px-1 text-[10px] font-bold text-textMain text-right">${h.weight}kg x ${h.reps}</td></tr>`).join('') : '<tr><td class="py-2 text-[10px] text-textMuted">Nessun log</td></tr>';
-                        let r2 = hasHist2 ? ex.history2.map(h => `<tr class="border-b border-borderBase/50 last:border-0 hover:bg-bgBase"><td class="py-2 px-1 text-[10px] text-textMuted">${h.date}</td><td class="py-2 px-1 text-[10px] font-bold text-textMain text-right">${h.weight}kg x ${h.reps}</td></tr>`).join('') : '<tr><td class="py-2 text-[10px] text-textMuted">Nessun log</td></tr>';
-                        
-                        innerHist = `
-                            <div class="grid grid-cols-2 gap-4">
-                                <div class="bg-bgBase p-2 rounded-xl border border-borderBase shadow-inner">
-                                    <p class="text-[10px] text-brand font-bold mb-2 pb-1 border-b border-borderBase truncate">${ex.subName1 || ex.name || 'Es. 1'}</p>
-                                    <table class="w-full">${r1}</table>
-                                </div>
-                                <div class="bg-bgBase p-2 rounded-xl border border-borderBase shadow-inner">
-                                    <p class="text-[10px] text-brandAccent font-bold mb-2 pb-1 border-b border-borderBase truncate">${ex.subName2 || ex.name2 || 'Es. 2'}</p>
-                                    <table class="w-full">${r2}</table>
-                                </div>
-                            </div>
-                        `;
-                    }
-                    historyHtml = `<div id="hist-${dIdx}-${eIdx}" class="accordion-content mt-3 border-t border-borderBase">${innerHist}</div>`;
-                }
-
-                return `
-                    <div class="bg-bgSurface p-5 rounded-[1.5rem] border border-borderBase shadow-xl relative overflow-hidden group">
-                        ${ex.type === 'superset' ? '<div class="absolute top-0 right-0 bg-brandAccent text-white text-[9px] font-bold px-3 py-1 rounded-bl-xl uppercase shadow-md">Superset</div>' : ''}
-                        
-                        <div class="flex justify-between items-start mb-3">
-                            <div class="flex-grow pr-10">
-                                <h4 class="font-extrabold text-lg text-textMain">${ex.name}</h4>
-                                ${ex.type === 'superset' ? `
-                                <div class="mt-3 space-y-2">
-                                    <div class="bg-bgBase px-3 py-2 rounded-xl border border-borderBase flex justify-between items-center shadow-inner">
-                                        <p class="text-[11px] font-bold text-brand uppercase tracking-wider truncate mr-2">${ex.subName1 || 'Esercizio 1'}</p>
-                                        <p class="text-xs font-mono text-textMuted flex-shrink-0">${ex.sets}x${ex.reps1} ${ex.weight1 ? '<span class="text-textMain font-bold ml-1">@'+ex.weight1+'kg</span>' : ''}</p>
-                                    </div>
-                                    <div class="bg-bgBase px-3 py-2 rounded-xl border border-borderBase flex justify-between items-center shadow-inner">
-                                        <p class="text-[11px] font-bold text-brandAccent uppercase tracking-wider truncate mr-2">${ex.subName2 || 'Esercizio 2'}</p>
-                                        <p class="text-xs font-mono text-textMuted flex-shrink-0">${ex.sets}x${ex.reps2} ${ex.weight2 ? '<span class="text-textMain font-bold ml-1">@'+ex.weight2+'kg</span>' : ''}</p>
-                                    </div>
-                                </div>
-                                ` : `
-                                <div class="mt-2 flex items-center gap-2">
-                                    <span class="bg-bgBase border border-borderBase px-2 py-1 rounded-lg text-xs font-mono font-bold text-textMain shadow-inner">${ex.sets} <span class="text-textMuted text-[10px]">SERIE</span></span>
-                                    <span class="text-textMuted text-xs">x</span>
-                                    <span class="bg-bgBase border border-borderBase px-2 py-1 rounded-lg text-xs font-mono font-bold text-textMain shadow-inner">${ex.reps1} <span class="text-textMuted text-[10px]">REPS</span></span>
-                                    ${ex.weight1 ? `<span class="bg-brand/10 border border-brand/20 text-brand px-2 py-1 rounded-lg text-xs font-mono font-bold">${ex.weight1} <span class="text-[10px]">KG</span></span>` : ''}
-                                </div>
-                                `}
-                                ${ex.desc ? `<p class="text-[11px] text-textMuted mt-3 italic border-l-2 border-brand/50 pl-2 py-0.5">${ex.desc}</p>` : ''}
-                            </div>
-                            <div class="flex flex-col items-center flex-shrink-0 ml-2 mt-1 gap-3">
-                                <button onclick="promptEditEx(${dIdx}, ${eIdx})" class="w-8 h-8 rounded-full bg-bgBase border border-borderBase text-textMuted hover:text-brand flex items-center justify-center transition-colors shadow-sm"><i class="fa-solid fa-pen text-[11px]"></i></button>
-                                <button onclick="deleteExercise(${dIdx}, ${eIdx})" class="w-8 h-8 rounded-full bg-bgBase border border-borderBase text-textMuted hover:text-rose-500 flex items-center justify-center transition-colors shadow-sm"><i class="fa-solid fa-trash-can text-[11px]"></i></button>
-                            </div>
-                        </div>
-                        
-                        <div class="flex gap-2 mt-4 pt-4 border-t border-borderBase">
-                            <button onclick="promptLogSession(${dIdx}, ${eIdx})" class="flex-1 bg-brand/10 text-brand text-xs font-bold py-2.5 rounded-xl border border-brand/20 hover:bg-brand/20 active:scale-95 transition-all"><i class="fa-solid fa-plus mr-1"></i> Log</button>
-                            ${(hasHist1 || hasHist2) ? `<button onclick="toggleHistory('${dIdx}-${eIdx}')" class="flex-1 bg-bgBase text-textMain text-xs font-bold py-2.5 rounded-xl border border-borderBase hover:bg-borderBase active:scale-95 transition-all shadow-sm"><i class="fa-solid fa-chart-line mr-1"></i> Storico</button>` : ''}
-                        </div>
-                        ${historyHtml}
-                    </div>
-                `;
-            }).join('');
-
-            if(!exHtml) exHtml = `<p class="text-xs text-textMuted p-6 text-center bg-bgSurface rounded-3xl border border-borderBase border-dashed shadow-sm">Nessun esercizio. Inizia ad aggiungerli!</p>`;
-            container.innerHTML = exHtml;
-        };
-
-        window.saveWorkoutDay = () => {
-            const name = document.getElementById('workoutDayName').value.trim();
-            if(!name) return;
-            window.workouts.push({ name, exercises: [] });
-            persistData(); closeModal('addWorkoutDayModal'); 
-            if(currentView === 'workout') renderWorkoutsGrid();
-        };
-        
-        window.duplicateWorkoutDay = (dIdx) => {
-            const day = window.workouts[dIdx];
-            const newDay = JSON.parse(JSON.stringify(day));
-            newDay.name = newDay.name + ' (Copia)';
-            window.workouts.push(newDay);
-            persistData(); 
-            switchTab('workout'); 
-        };
-
-        window.deleteWorkoutDay = (idx) => {
-            showMessage("Elimina Giorno", "Eliminare questa scheda e tutti i suoi esercizi?", true, () => {
-                window.workouts.splice(idx, 1); 
-                persistData(); 
-                switchTab('workout');
-            });
-        };
-
-        window.promptAddEx = (dIdx) => {
-            document.getElementById('addExTitle').innerText = 'Nuovo Esercizio';
-            document.getElementById('exDayIdx').value = dIdx;
-            document.getElementById('exEditIdx').value = '';
-            document.getElementById('exName').value = '';
-            document.getElementById('exSubName1').value = '';
-            document.getElementById('exSubName2').value = '';
-            document.getElementById('exSets').value = '';
-            document.getElementById('exReps1').value = '';
-            document.getElementById('exWeight1').value = '';
-            document.getElementById('exReps2').value = '';
-            document.getElementById('exWeight2').value = '';
-            document.getElementById('exDesc').value = '';
-            setExType('classic');
-            openModal('addExModal', 'addExBox');
-        };
-
-        window.promptEditEx = (dIdx, eIdx) => {
-            const ex = window.workouts[dIdx].exercises[eIdx];
-            document.getElementById('addExTitle').innerText = 'Modifica Esercizio';
-            document.getElementById('exDayIdx').value = dIdx;
-            document.getElementById('exEditIdx').value = eIdx;
-            
-            document.getElementById('exName').value = ex.name;
-            document.getElementById('exSubName1').value = ex.subName1 || (ex.type === 'superset' ? ex.name : '');
-            document.getElementById('exSubName2').value = ex.subName2 || ex.name2 || '';
-            document.getElementById('exSets').value = ex.sets;
-            document.getElementById('exReps1').value = ex.reps1;
-            document.getElementById('exWeight1').value = ex.weight1 || '';
-            document.getElementById('exReps2').value = ex.reps2 || '';
-            document.getElementById('exWeight2').value = ex.weight2 || '';
-            document.getElementById('exDesc').value = ex.desc || '';
-            
-            setExType(ex.type);
-            openModal('addExModal', 'addExBox');
-        };
-
-        window.setExType = (type) => {
-            document.getElementById('exType').value = type;
-            const isClassic = type === 'classic';
-            document.getElementById('typeClassic').className = isClassic ? 'flex-1 py-2 text-xs font-bold bg-bgSurface border border-borderBase text-textMain shadow-sm rounded-lg transition-all' : 'flex-1 py-2 text-xs font-bold text-textMuted rounded-lg hover:text-textMain transition-all';
-            document.getElementById('typeSuper').className = !isClassic ? 'flex-1 py-2 text-xs font-bold bg-bgSurface border border-borderBase text-textMain shadow-sm rounded-lg transition-all' : 'flex-1 py-2 text-xs font-bold text-textMuted rounded-lg hover:text-textMain transition-all';
-            
-            if (isClassic) {
-                document.getElementById('supersetFields').classList.add('hidden');
-                document.getElementById('labelEx1').classList.add('hidden');
-                document.getElementById('exSubName1').classList.add('hidden');
-            } else {
-                document.getElementById('supersetFields').classList.remove('hidden');
-                document.getElementById('labelEx1').classList.remove('hidden');
-                document.getElementById('exSubName1').classList.remove('hidden');
-            }
-        };
-
-        window.saveExercise = () => {
-            const dIdx = document.getElementById('exDayIdx').value;
-            const editIdx = document.getElementById('exEditIdx').value;
-            
-            const ex = {
-                name: document.getElementById('exName').value || 'Esercizio',
-                subName1: document.getElementById('exSubName1').value || '',
-                subName2: document.getElementById('exSubName2').value || '',
-                type: document.getElementById('exType').value,
-                sets: document.getElementById('exSets').value || '3',
-                reps1: document.getElementById('exReps1').value || '10',
-                weight1: document.getElementById('exWeight1').value || '',
-                reps2: document.getElementById('exReps2').value || '',
-                weight2: document.getElementById('exWeight2').value || '',
-                desc: document.getElementById('exDesc').value || ''
-            };
-
-            if (editIdx !== '') {
-                ex.history = window.workouts[dIdx].exercises[editIdx].history || [];
-                ex.history2 = window.workouts[dIdx].exercises[editIdx].history2 || [];
-                window.workouts[dIdx].exercises[editIdx] = ex;
-            } else {
-                ex.history = [];
-                ex.history2 = [];
-                window.workouts[dIdx].exercises.push(ex);
-            }
-            
-            persistData(); closeModal('addExModal'); 
-            if (currentView === 'workoutDayDetail') renderWorkoutDay(currentWorkoutDayIdx);
-        };
-
-        window.deleteExercise = (dIdx, eIdx) => {
-            window.workouts[dIdx].exercises.splice(eIdx, 1);
-            persistData(); 
-            if (currentView === 'workoutDayDetail') renderWorkoutDay(currentWorkoutDayIdx);
-        };
-
-        window.promptLogSession = (dIdx, eIdx) => {
-            document.getElementById('logDayIdx').value = dIdx;
-            document.getElementById('logExIdx').value = eIdx;
-            const ex = window.workouts[dIdx].exercises[eIdx];
-            
-            document.getElementById('logWeight').value = ex.weight1;
-            document.getElementById('logReps').value = ex.reps1;
-            
-            if (ex.type === 'superset') {
-                document.getElementById('logSupersetGroup').classList.remove('hidden');
-                document.getElementById('logTitle1').innerHTML = `<i class="fa-solid fa-1"></i> ${ex.subName1 || ex.name || 'Es. 1'}`;
-                document.getElementById('logTitle2').innerHTML = `<i class="fa-solid fa-2"></i> ${ex.subName2 || ex.name2 || 'Es. 2'}`;
-                document.getElementById('logWeight2').value = ex.weight2;
-                document.getElementById('logReps2').value = ex.reps2;
-            } else {
-                document.getElementById('logTitle1').innerHTML = `<i class="fa-solid fa-dumbbell"></i> ${ex.name}`;
-                document.getElementById('logSupersetGroup').classList.add('hidden');
-            }
-            openModal('logSessionModal', 'logSessionBox');
-        };
-
-        window.confirmLogSession = () => {
-            const dIdx = document.getElementById('logDayIdx').value;
-            const eIdx = document.getElementById('logExIdx').value;
-            const ex = window.workouts[dIdx].exercises[eIdx];
-            
-            const weight = document.getElementById('logWeight').value;
-            const reps = document.getElementById('logReps').value;
-            const date = new Date().toLocaleDateString('it-IT', { day:'2-digit', month:'short', year:'numeric' });
-            
-            if(!ex.history) ex.history = [];
-            ex.history.unshift({ date, weight, reps });
-            
-            if (ex.type === 'superset') {
-                const weight2 = document.getElementById('logWeight2').value;
-                const reps2 = document.getElementById('logReps2').value;
-                if(!ex.history2) ex.history2 = [];
-                ex.history2.unshift({ date, weight: weight2, reps: reps2 });
-            }
-            
-            persistData(); closeModal('logSessionModal'); 
-            if (currentView === 'workoutDayDetail') renderWorkoutDay(currentWorkoutDayIdx);
-            setTimeout(() => { document.getElementById(`hist-${dIdx}-${eIdx}`).classList.add('expanded'); }, 300);
-        };
-
-        window.toggleHistory = (id) => {
-            const el = document.getElementById(`hist-${id}`);
-            if(el) el.classList.toggle('expanded');
-        };
-
-        window.calculateDayMacros = (dayName) => {
-            const meals = window.weeklyDiet[dayName] || [];
-            let totalC = 0, totalP = 0, totalF = 0;
-            meals.forEach(meal => {
-                meal.items.forEach(item => {
-                    const food = [...presetDb, ...window.foodDb].find(f => f.name === item.name);
-                    if(food) {
-                        const m = (food.macroValue * item.grams) / 100;
-                        if(food.category === 'Carboidrati') totalC += m;
-                        else if(food.category === 'Proteine') totalP += m;
-                        else if(food.category === 'Grassi') totalF += m;
-                    }
-                });
-            });
-            return { c: totalC, p: totalP, f: totalF };
-        };
-
-        window.renderDietGrid = () => {
-            const container = document.getElementById('dietGridContainer');
-            const days = ["Lunedì", "Martedì", "Mercoledì", "Giovedì", "Venerdì", "Sabato", "Domenica"];
-            
-            container.innerHTML = days.map(day => {
-                const mac = calculateDayMacros(day);
-                return `
-                    <button onclick="openDietDay('${day}')" class="bg-bgSurface rounded-[2rem] p-5 shadow-xl border border-borderBase flex flex-col items-center justify-center gap-3 active:scale-[0.97] transition-all text-center relative overflow-hidden group">
-                        <div class="absolute inset-0 bg-gradient-to-br from-emerald-500/5 to-transparent opacity-50"></div>
-                        <h3 class="font-extrabold text-lg text-textMain z-10">${day}</h3>
-                        <div class="z-10 flex gap-2 text-[10px] font-extrabold bg-bgBase border border-borderBase px-2 py-1.5 rounded-lg shadow-inner">
-                            <span class="text-blue-600">C:${mac.c.toFixed(0)}</span>
-                            <span class="text-rose-500">P:${mac.p.toFixed(0)}</span>
-                            <span class="text-amber-500">G:${mac.f.toFixed(0)}</span>
-                        </div>
-                    </button>
-                `;
-            }).join('');
-        };
-
-        window.openDietDay = (day) => {
-            currentDietDay = day;
-            renderDietDay(day);
-            switchTab('dietDayDetail');
-        };
-
-        window.renderDietDay = (day) => {
-            const meals = window.weeklyDiet[day] || [];
-            document.getElementById('dietDayDetailTitle').innerText = day;
-            
-            const mac = calculateDayMacros(day);
-            document.getElementById('dietDayDetailMacros').innerHTML = `
-                <span class="text-blue-600">C: ${mac.c.toFixed(0)}g</span>
-                <span class="text-textMuted">•</span>
-                <span class="text-rose-500">P: ${mac.p.toFixed(0)}g</span>
-                <span class="text-textMuted">•</span>
-                <span class="text-amber-500">G: ${mac.f.toFixed(0)}g</span>
-            `;
-
-            const container = document.getElementById('dietDayMealsContainer');
-            
-            let mealsHtml = meals.map((meal, mIdx) => {
-                let mealCarbs = 0, mealProts = 0, mealFats = 0;
-
-                let itemsHtml = meal.items.map((item, iIdx) => {
-                    const food = [...presetDb, ...window.foodDb].find(f => f.name === item.name);
-                    let macroNote = '';
-                    if(food) {
-                        const mac = (food.macroValue * item.grams) / 100;
-                        if(food.category === 'Carboidrati') { mealCarbs += mac; macroNote = `<span class="text-[9px] text-blue-500 font-bold ml-1">(${mac.toFixed(0)}g C)</span>`; }
-                        else if(food.category === 'Proteine') { mealProts += mac; macroNote = `<span class="text-[9px] text-rose-500 font-bold ml-1">(${mac.toFixed(0)}g P)</span>`; }
-                        else if(food.category === 'Grassi') { mealFats += mac; macroNote = `<span class="text-[9px] text-amber-500 font-bold ml-1">(${mac.toFixed(0)}g G)</span>`; }
-                    }
-
-                    return `
-                    <div class="flex items-center justify-between py-2 border-b border-borderBase/70 last:border-0 hover:bg-bgBase/50 transition-colors">
-                        <div>
-                            <p class="text-xs font-bold text-textMain">${item.name} ${macroNote}</p>
-                            <p class="text-[9px] uppercase tracking-wider text-textMuted">${item.category}</p>
-                        </div>
-                        <div class="flex items-center gap-2">
-                            <span class="text-xs font-extrabold text-emerald-600 bg-emerald-50 px-2 py-1 rounded-md border border-emerald-100">${item.grams}g</span>
-                            <button onclick="promptSwapFood('${day}', ${mIdx}, ${iIdx})" class="text-textMuted hover:text-brandAccent p-1.5 transition-colors active:scale-90"><i class="fa-solid fa-rotate"></i></button>
-                            <button onclick="deleteDietItem('${day}', ${mIdx}, ${iIdx})" class="text-textMuted hover:text-rose-500 p-1.5 transition-colors active:scale-90"><i class="fa-solid fa-trash-can"></i></button>
-                        </div>
-                    </div>
-                `}).join('');
-
-                const mealMacrosDisplay = `
-                    <div class="flex gap-3 text-[10px] mt-1 font-extrabold">
-                        <span class="text-blue-500 tracking-wider">C: ${mealCarbs.toFixed(0)}g</span>
-                        <span class="text-rose-500 tracking-wider">P: ${mealProts.toFixed(0)}g</span>
-                        <span class="text-amber-500 tracking-wider">G: ${mealFats.toFixed(0)}g</span>
-                    </div>
-                `;
-
-                return `
-                    <div class="bg-bgSurface border border-borderBase rounded-[1.5rem] p-5 shadow-xl">
-                        <div class="flex justify-between items-start mb-3 border-b border-borderBase pb-3">
-                            <div>
-                                <h4 class="font-extrabold text-sm text-textMain">${meal.name}</h4>
-                                ${mealMacrosDisplay}
-                            </div>
-                            <div class="flex gap-2">
-                                <button onclick="promptAddItem('${day}', ${mIdx})" class="w-8 h-8 flex items-center justify-center text-xs font-bold bg-emerald-50 border border-emerald-200 text-emerald-600 rounded-xl hover:bg-emerald-100 active:scale-95 transition-all shadow-sm"><i class="fa-solid fa-plus"></i></button>
-                                <button onclick="duplicateMeal('${day}', ${mIdx})" class="w-8 h-8 flex items-center justify-center text-xs bg-bgBase border border-borderBase text-textMain rounded-xl active:scale-95 transition-all shadow-sm"><i class="fa-solid fa-copy"></i></button>
-                                <button onclick="deleteMeal('${day}', ${mIdx})" class="w-8 h-8 flex items-center justify-center text-rose-500 bg-bgBase border border-borderBase hover:bg-rose-50 rounded-xl active:scale-95 transition-all shadow-sm"><i class="fa-solid fa-trash text-xs"></i></button>
-                            </div>
-                        </div>
-                        <div class="bg-bgBase p-3 rounded-xl border border-borderBase shadow-inner">
-                            ${itemsHtml || '<p class="text-[10px] text-textMuted text-center">Nessun alimento.</p>'}
-                        </div>
-                    </div>
-                `;
-            }).join('');
-
-            if(!mealsHtml) mealsHtml = `<p class="text-xs text-textMuted p-6 text-center bg-bgSurface rounded-3xl border border-borderBase border-dashed shadow-sm">Nessun pasto inserito per oggi.</p>`;
-            container.innerHTML = mealsHtml;
-        };
-
-        window.promptAddMeal = (day) => { 
-            document.getElementById('addMealDay').value = day; 
-            document.getElementById('addMealNameInput').value = ''; 
-            openModal('addMealModal', 'addMealBox'); 
-        };
-        
-        window.confirmAddMeal = () => {
-            const day = document.getElementById('addMealDay').value;
-            const name = document.getElementById('addMealNameInput').value;
-            if(!name) return;
-            if(!window.weeklyDiet[day]) window.weeklyDiet[day] = [];
-            window.weeklyDiet[day].push({ name, items: [] });
-            persistData(); closeModal('addMealModal'); 
-            if (currentView === 'dietDayDetail') renderDietDay(day);
-        };
-        
-        window.duplicateMeal = (day, mIdx) => {
-            const meal = window.weeklyDiet[day][mIdx];
-            const newMeal = JSON.parse(JSON.stringify(meal));
-            newMeal.name = newMeal.name + ' (Copia)';
-            window.weeklyDiet[day].push(newMeal);
-            persistData(); 
-            if (currentView === 'dietDayDetail') renderDietDay(day);
-        };
-
-        window.deleteMeal = (day, mIdx) => { 
-            window.weeklyDiet[day].splice(mIdx, 1); 
-            persistData(); 
-            if (currentView === 'dietDayDetail') renderDietDay(day); 
-        };
-
-        window.promptAddItem = (day, mIdx) => { 
-            document.getElementById('itemDayIdx').value = day; 
-            document.getElementById('itemMealIdx').value = mIdx; 
-            const sel = document.getElementById('itemFoodSelect');
-            const allFoods = [...presetDb, ...window.foodDb].sort((a,b) => a.category.localeCompare(b.category) || a.name.localeCompare(b.name));
-            
-            let currentCat = '';
-            let optionsHtml = '<option value="">Scegli dal Database...</option>';
-            allFoods.forEach(f => {
-                if(f.category !== currentCat) {
-                    if(currentCat !== '') optionsHtml += `</optgroup>`;
-                    optionsHtml += `<optgroup label="${f.category}">`;
-                    currentCat = f.category;
-                }
-                optionsHtml += `<option value="${f.name}">${f.name}</option>`;
-            });
-            if(currentCat !== '') optionsHtml += `</optgroup>`;
-            
-            sel.innerHTML = optionsHtml;
-            document.getElementById('itemGramsInput').value = '';
-            openModal('addDietItemModal', 'addDietItemBox'); 
-        };
-        
-        window.confirmAddDietItem = () => {
-            const day = document.getElementById('itemDayIdx').value;
-            const mIdx = document.getElementById('itemMealIdx').value;
-            const foodName = document.getElementById('itemFoodSelect').value;
-            const grams = parseFloat(document.getElementById('itemGramsInput').value);
-            
-            if(!foodName || !grams) return;
-            const food = [...presetDb, ...window.foodDb].find(f => f.name === foodName);
-            if(!food) return;
-
-            window.weeklyDiet[day][mIdx].items.push({ name: food.name, category: food.category, grams });
-            persistData(); closeModal('addDietItemModal'); 
-            if (currentView === 'dietDayDetail') renderDietDay(day);
-        };
-
-        window.deleteDietItem = (day, mIdx, iIdx) => { 
-            window.weeklyDiet[day][mIdx].items.splice(iIdx, 1); 
-            persistData(); 
-            if (currentView === 'dietDayDetail') renderDietDay(day); 
-        };
-
-        let currentSwap = { day: null, mIdx: null, iIdx: null };
-
-        window.promptSwapFood = (day, mIdx, iIdx) => {
-            currentSwap = { day, mIdx, iIdx };
-            const item = window.weeklyDiet[day][mIdx].items[iIdx];
-            const allFoods = [...presetDb, ...window.foodDb];
-            const sourceFood = allFoods.find(f => f.name === item.name);
-
-            if(!sourceFood || sourceFood.macroValue === 0) {
-                showMessage("Avviso", "Le verdure libere o alimenti senza macro principali si gestiscono manualmente.");
-                return;
-            }
-
-            const totalMacro = (sourceFood.macroValue / 100) * item.grams;
-
-            document.getElementById('swapFoodInfo').innerHTML = `
-                <p class="text-[10px] uppercase font-bold tracking-wider mb-1">Stai sostituendo</p>
-                <p class="text-lg font-extrabold">${item.grams}g di ${item.name}</p>
-                <p class="text-xs mt-1 font-semibold opacity-80">(${totalMacro.toFixed(1)}g di ${sourceFood.category})</p>
-            `;
-
-            const alternatives = allFoods.filter(f => f.category === sourceFood.category && f.name !== sourceFood.name && f.macroValue > 0);
-
-            let altHtml = alternatives.map(f => {
-                const neededGrams = (totalMacro * 100) / f.macroValue;
-                return `
-                    <button onclick="confirmSwapFood('${f.name}', ${neededGrams})" class="w-full flex justify-between items-center bg-bgBase hover:bg-borderBase border border-borderBase p-3 rounded-xl shadow-sm transition-colors active:scale-95 group">
-                        <span class="font-bold text-sm text-textMain block">${f.name}</span>
-                        <span class="text-brandAccent font-extrabold bg-brandAccent/10 px-3 py-1.5 rounded-lg border border-brandAccent/20 group-hover:bg-brandAccent group-hover:text-white transition-colors flex-shrink-0 ml-2">${neededGrams.toFixed(0)}g</span>
-                    </button>
-                `;
-            }).join('');
-
-            document.getElementById('swapAlternativesList').innerHTML = altHtml || '<p class="text-xs text-textMuted text-center py-4">Nessuna alternativa trovata nel DB per questa categoria.</p>';
-
-            openModal('swapFoodModal', 'swapFoodBox');
-        };
-
-        window.confirmSwapFood = (newName, newGrams) => {
-            const { day, mIdx, iIdx } = currentSwap;
-            const targetFood = [...presetDb, ...window.foodDb].find(f => f.name === newName);
-            
-            window.weeklyDiet[day][mIdx].items[iIdx] = {
-                name: newName,
-                category: targetFood.category,
-                grams: Math.round(newGrams) // Arrotonda al grammo per facilitare la bilancia
-            };
-
-            persistData();
-            closeModal('swapFoodModal');
-            if (currentView === 'dietDayDetail') renderDietDay(day);
-        };
-
-        window.renderDb = () => {
-            const list = document.getElementById('foodList');
-            if(window.foodDb.length === 0) { list.innerHTML = `<p class="text-xs text-textMuted text-center p-4 bg-bgBase rounded-xl border border-borderBase border-dashed">Nessun alimento personale.</p>`; return; }
-            list.innerHTML = window.foodDb.map(f => `
-                <div class="flex justify-between items-center bg-bgBase border border-borderBase p-3 rounded-xl mb-2 last:mb-0 shadow-sm">
+                <div id="superFields2" class="hidden space-y-3 pt-3 border-t border-line">
                     <div>
-                        <p class="font-bold text-sm text-textMain">${f.name}</p>
-                        <p class="text-[10px] text-textMuted uppercase tracking-wider">${f.category} <span class="text-brand font-bold">(${f.macroValue}g/100g)</span></p>
+                        <label for="exSubName2" class="field-label !text-accent">Esercizio 2</label>
+                        <input type="text" id="exSubName2" placeholder="Es. Croci ai cavi" autocomplete="off" class="field">
                     </div>
-                    <button onclick="deleteDbFood('${f.id}')" class="text-rose-500 p-2 hover:bg-rose-50 rounded-lg transition-colors"><i class="fa-solid fa-trash text-sm"></i></button>
+                    <div class="grid grid-cols-2 gap-2">
+                        <div><label for="exReps2" class="field-label">Reps</label><input type="text" id="exReps2" placeholder="10" class="field text-center"></div>
+                        <div><label for="exWeight2" class="field-label">Kg</label><input type="text" inputmode="decimal" id="exWeight2" placeholder="—" class="field text-center"></div>
+                    </div>
                 </div>
-            `).join('');
-        };
+                <div>
+                    <label for="exDesc" class="field-label">Note</label>
+                    <textarea id="exDesc" placeholder="Opzionale: tempo di recupero, tecnica…" rows="2" class="field resize-none"></textarea>
+                </div>
+            </div>
+            <button type="submit" class="btn-primary">Salva esercizio</button>
+            <button type="button" id="exDeleteBtn" onclick="deleteExercise()" class="btn-danger mt-2 hidden"><i class="fa-solid fa-trash-can"></i> Elimina esercizio</button>
+        </form>
+    </div>
 
-        window.saveDbFood = () => {
-            const name = document.getElementById('dbFoodName').value;
-            const category = document.getElementById('dbFoodCat').value;
-            const macroValue = parseFloat(document.getElementById('dbFoodMacro').value);
-            if(!name || isNaN(macroValue)) return;
-            window.foodDb.push({ id: Date.now().toString(), name, category, macroValue });
-            persistData(); closeModal('addFoodModal'); renderDb(); updateSmartDropdown();
-        };
-        window.deleteDbFood = (id) => { window.foodDb = window.foodDb.filter(f => f.id !== id); persistData(); renderDb(); updateSmartDropdown(); };
-
-        window.updateSmartDropdown = () => {
-            const cat = document.getElementById('smartCalcCat').value;
-            const sel = document.getElementById('smartCalcFood');
-            sel.innerHTML = '<option value="">Alimento Base</option>';
-            if(!cat) { sel.disabled = true; return; }
-            
-            sel.disabled = false;
-            const combined = [...presetDb, ...window.foodDb].filter(f => f.category === cat && f.macroValue > 0);
-            combined.forEach((f, i) => { sel.innerHTML += `<option value="${i}">${f.name}</option>`; });
-        };
-
-        window.findAlternatives = () => {
-            const cat = document.getElementById('smartCalcCat').value;
-            const idx = document.getElementById('smartCalcFood').value;
-            const grams = parseFloat(document.getElementById('smartCalcGrams').value);
-            
-            if(!cat || idx === "" || !grams) { showMessage("Errore", "Seleziona categoria, alimento base e la grammatura."); return; }
-            
-            const combined = [...presetDb, ...window.foodDb].filter(f => f.category === cat && f.macroValue > 0);
-            const sourceFood = combined[idx];
-            const totalMacro = (sourceFood.macroValue / 100) * grams;
-            
-            let html = `<div class="bg-brand/10 border border-brand/30 text-textMain p-4 rounded-xl mb-4 shadow-inner text-center"><p class="text-xs text-brand uppercase tracking-wider mb-1 font-bold">Macro ricercato</p><p class="text-xl font-extrabold text-brand">${totalMacro.toFixed(1)}g <span class="text-sm font-normal">di ${cat}</span></p></div>`;
-            
-            combined.forEach((f, i) => {
-                if(i.toString() === idx) return; 
-                const neededGrams = (totalMacro * 100) / f.macroValue;
-                html += `
-                    <div class="flex justify-between items-center bg-bgBase border border-borderBase p-4 rounded-xl shadow-sm mb-2">
-                        <span class="font-bold text-sm text-textMain">${f.name}</span>
-                        <span class="text-brandAccent font-extrabold bg-brandAccent/10 px-3 py-1.5 rounded-lg border border-brandAccent/20">${neededGrams.toFixed(0)}g</span>
+    <!-- Log sessione -->
+    <div id="logModal" class="modal hidden" onclick="if(event.target===this) closeModal(this.id)">
+        <form class="sheet" onsubmit="event.preventDefault(); confirmLogSession()">
+            <div class="sheet-handle"></div>
+            <div class="flex justify-between items-center mb-1">
+                <h3 class="text-xl font-extrabold">Registra sessione</h3>
+                <button type="button" class="icon-btn -mr-2" onclick="closeModal('logModal')" aria-label="Chiudi"><i class="fa-solid fa-xmark text-lg"></i></button>
+            </div>
+            <p class="text-sm text-muted mb-4">Precompilato con l'ultima sessione registrata.</p>
+            <div class="space-y-4 mb-5">
+                <div>
+                    <p id="logTitle1" class="text-sm font-extrabold text-brand mb-2 truncate"></p>
+                    <div class="grid grid-cols-2 gap-2">
+                        <div><label for="logWeight" class="field-label">Peso (kg)</label><input type="text" inputmode="decimal" id="logWeight" placeholder="0" class="field text-center text-lg" data-autofocus></div>
+                        <div><label for="logReps" class="field-label">Ripetizioni</label><input type="number" inputmode="numeric" id="logReps" placeholder="0" class="field text-center text-lg"></div>
                     </div>
-                `;
-            });
-            
-            const resDiv = document.getElementById('smartResultList');
-            resDiv.innerHTML = html;
-            resDiv.classList.remove('hidden');
-        };
+                </div>
+                <div id="logSuperGroup" class="hidden pt-4 border-t border-line">
+                    <p id="logTitle2" class="text-sm font-extrabold text-accent mb-2 truncate"></p>
+                    <div class="grid grid-cols-2 gap-2">
+                        <div><label for="logWeight2" class="field-label">Peso (kg)</label><input type="text" inputmode="decimal" id="logWeight2" placeholder="0" class="field text-center text-lg"></div>
+                        <div><label for="logReps2" class="field-label">Ripetizioni</label><input type="number" inputmode="numeric" id="logReps2" placeholder="0" class="field text-center text-lg"></div>
+                    </div>
+                </div>
+            </div>
+            <button type="submit" class="btn-primary"><i class="fa-solid fa-check"></i> Salva nel diario</button>
+        </form>
+    </div>
 
-        let timerInterval, timerSeconds = 0, isRunning = false;
-        let timerMode = 'free', timerPhase = 'idle', remainingSets = 0;
+    <!-- Aggiungi alimento al pasto -->
+    <div id="foodPickerModal" class="modal hidden" onclick="if(event.target===this) closeModal(this.id)">
+        <form class="sheet" onsubmit="event.preventDefault(); confirmAddDietItem()">
+            <div class="sheet-handle"></div>
+            <div class="flex justify-between items-center mb-4">
+                <h3 class="text-xl font-extrabold">Aggiungi alimento</h3>
+                <button type="button" class="icon-btn -mr-2" onclick="closeModal('foodPickerModal')" aria-label="Chiudi"><i class="fa-solid fa-xmark text-lg"></i></button>
+            </div>
+            <div class="relative mb-3">
+                <i class="fa-solid fa-magnifying-glass absolute left-4 top-1/2 -translate-y-1/2 text-muted text-sm"></i>
+                <input type="search" id="pickerSearch" placeholder="Cerca alimento…" autocomplete="off" class="field !pl-10" oninput="renderPickerList()">
+            </div>
+            <div id="pickerCats" class="flex gap-1.5 overflow-x-auto no-scrollbar mb-3 -mx-1 px-1"></div>
+            <div id="pickerList" class="h-[34dvh] overflow-y-auto no-scrollbar rounded-2xl border border-line bg-inset p-1.5 space-y-1 mb-4"></div>
+            <div class="flex gap-2 items-end mb-4">
+                <div class="flex-1 min-w-0">
+                    <p class="field-label">Selezionato</p>
+                    <p id="pickerSelected" class="text-sm font-bold truncate ml-1 text-muted">Nessuno</p>
+                </div>
+                <div class="w-28">
+                    <label for="pickerGrams" class="field-label">Grammi</label>
+                    <input type="text" inputmode="decimal" id="pickerGrams" placeholder="100" class="field text-center" oninput="updatePickerPreview()">
+                </div>
+            </div>
+            <p id="pickerPreview" class="text-xs font-bold text-center text-muted mb-3 h-4"></p>
+            <button type="submit" class="btn-primary !from-emerald-500 !to-emerald-600 !shadow-emerald-500/25"><i class="fa-solid fa-plus"></i> Inserisci</button>
+        </form>
+    </div>
 
-        window.playBeep = (type = 'short') => {
-            try {
-                const ctx = new (window.AudioContext || window.webkitAudioContext)();
-                const osc = ctx.createOscillator();
-                const gainNode = ctx.createGain();
-                osc.connect(gainNode);
-                gainNode.connect(ctx.destination);
-                osc.type = 'sine';
-                
-                if(type === 'long') {
-                    osc.frequency.value = 400; 
-                    gainNode.gain.setValueAtTime(1, ctx.currentTime);
-                    gainNode.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.8);
-                    osc.start(); osc.stop(ctx.currentTime + 0.8);
-                } else {
-                    osc.frequency.value = 800; 
-                    gainNode.gain.setValueAtTime(1, ctx.currentTime);
-                    gainNode.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.3);
-                    osc.start(); osc.stop(ctx.currentTime + 0.3);
-                }
-            } catch(e) {}
-        };
+    <!-- Alternative (swap) -->
+    <div id="swapModal" class="modal hidden" onclick="if(event.target===this) closeModal(this.id)">
+        <div class="sheet">
+            <div class="sheet-handle"></div>
+            <div class="flex justify-between items-center mb-4">
+                <h3 class="text-xl font-extrabold">Sostituisci alimento</h3>
+                <button type="button" class="icon-btn -mr-2" onclick="closeModal('swapModal')" aria-label="Chiudi"><i class="fa-solid fa-xmark text-lg"></i></button>
+            </div>
+            <div id="swapInfo" class="bg-accent/10 border border-accent/20 p-4 rounded-2xl mb-3 text-center"></div>
+            <div class="relative mb-3">
+                <i class="fa-solid fa-magnifying-glass absolute left-4 top-1/2 -translate-y-1/2 text-muted text-sm"></i>
+                <input type="search" id="swapSearch" placeholder="Filtra alternative…" autocomplete="off" class="field !pl-10" oninput="renderSwapList()">
+            </div>
+            <div id="swapList" class="space-y-1.5 max-h-[45dvh] overflow-y-auto no-scrollbar"></div>
+        </div>
+    </div>
 
-        window.toggleTimerSettings = () => { document.getElementById('timerSettings').classList.toggle('hidden'); };
+    <!-- Nuovo alimento DB -->
+    <div id="addFoodModal" class="modal hidden" onclick="if(event.target===this) closeModal(this.id)">
+        <form class="sheet" onsubmit="event.preventDefault(); saveDbFood()">
+            <div class="sheet-handle"></div>
+            <div class="flex justify-between items-center mb-4">
+                <h3 class="text-xl font-extrabold">Nuovo alimento</h3>
+                <button type="button" class="icon-btn -mr-2" onclick="closeModal('addFoodModal')" aria-label="Chiudi"><i class="fa-solid fa-xmark text-lg"></i></button>
+            </div>
+            <div class="space-y-3 mb-5">
+                <div><label for="dbFoodName" class="field-label">Nome</label><input type="text" id="dbFoodName" placeholder="Es. Petto di pollo" autocomplete="off" class="field" data-autofocus></div>
+                <div>
+                    <label for="dbFoodCat" class="field-label">Macro principale</label>
+                    <select id="dbFoodCat" class="field">
+                        <option value="Carboidrati">Carboidrati</option>
+                        <option value="Proteine">Proteine</option>
+                        <option value="Grassi">Grassi</option>
+                        <option value="Verdure">Verdure (libere, 0 macro)</option>
+                    </select>
+                </div>
+                <div><label for="dbFoodMacro" class="field-label">Grammi di macro per 100 g</label><input type="text" inputmode="decimal" id="dbFoodMacro" placeholder="Es. 23" class="field"></div>
+            </div>
+            <button type="submit" class="btn-primary">Salva nel database</button>
+        </form>
+    </div>
 
-        window.setTimerMode = (mode) => {
-            timerMode = mode;
-            document.getElementById('tModeFree').className = mode === 'free' ? 'flex-1 py-2 text-xs font-bold bg-bgSurface border border-borderBase rounded-lg text-textMain shadow-sm' : 'flex-1 py-2 text-xs font-bold text-textMuted hover:text-textMain rounded-lg transition-colors';
-            document.getElementById('tModeInt').className = mode === 'interval' ? 'flex-1 py-2 text-xs font-bold bg-bgSurface border border-borderBase rounded-lg text-textMain shadow-sm' : 'flex-1 py-2 text-xs font-bold text-textMuted hover:text-textMain rounded-lg transition-colors';
-            document.getElementById('intervalInputs').style.display = mode === 'interval' ? 'flex' : 'none';
-            document.getElementById('timerModeText').innerText = mode === 'free' ? 'Libero' : 'Circuito (Pronto)';
-            document.getElementById('timerModeText').className = "text-[10px] text-brandAccent font-bold uppercase tracking-widest mt-1";
-            resetTimer();
-        };
-
-        function formatTime(sec) {
-            const m = Math.floor(sec / 60).toString().padStart(2, '0');
-            const s = (sec % 60).toString().padStart(2, '0');
-            return `${m}:${s}`;
-        }
-
-        window.toggleTimer = () => {
-            const btn = document.getElementById('timerPlayBtn');
-            if(isRunning) {
-                clearInterval(timerInterval);
-                btn.innerHTML = '<i class="fa-solid fa-play"></i>';
-                btn.className = "w-12 h-12 rounded-full bg-brand text-white flex items-center justify-center shadow-[0_0_20px_rgba(79,70,229,0.4)] active:scale-90 transition-transform";
-            } else {
-                if(timerMode === 'interval' && timerPhase === 'idle') {
-                    const sets = parseInt(document.getElementById('tSets').value) || 1;
-                    const wM = parseInt(document.getElementById('tWorkMin').value) || 0;
-                    const wS = parseInt(document.getElementById('tWorkSec').value) || 0;
-                    
-                    remainingSets = sets;
-                    timerSeconds = (wM * 60) + wS;
-                    timerPhase = 'work';
-                    document.getElementById('timerModeText').innerText = `Serie ${remainingSets} - LAVORO`;
-                    document.getElementById('timerModeText').className = "text-[10px] text-emerald-500 font-bold uppercase tracking-widest mt-1";
-                    playBeep('short');
-                    if(timerSeconds === 0) return;
-                }
-                
-                timerInterval = setInterval(() => {
-                    if(timerMode === 'free') timerSeconds++;
-                    else {
-                        timerSeconds--;
-                        if(timerSeconds <= 0) {
-                            if(timerPhase === 'work') {
-                                const rM = parseInt(document.getElementById('tRestMin').value) || 0;
-                                const rS = parseInt(document.getElementById('tRestSec').value) || 0;
-                                timerSeconds = (rM * 60) + rS;
-                                timerPhase = 'rest';
-                                document.getElementById('timerModeText').innerText = `Serie ${remainingSets} - RECUPERO`;
-                                document.getElementById('timerModeText').className = "text-[10px] text-amber-500 font-bold uppercase tracking-widest mt-1";
-                                playBeep('long');
-                            } else if(timerPhase === 'rest') {
-                                remainingSets--;
-                                if(remainingSets > 0) {
-                                    const wM = parseInt(document.getElementById('tWorkMin').value) || 0;
-                                    const wS = parseInt(document.getElementById('tWorkSec').value) || 0;
-                                    timerSeconds = (wM * 60) + wS;
-                                    timerPhase = 'work';
-                                    document.getElementById('timerModeText').innerText = `Serie ${remainingSets} - LAVORO`;
-                                    document.getElementById('timerModeText').className = "text-[10px] text-emerald-500 font-bold uppercase tracking-widest mt-1";
-                                    playBeep('short');
-                                } else {
-                                    clearInterval(timerInterval);
-                                    isRunning = false;
-                                    timerPhase = 'idle';
-                                    timerSeconds = 0;
-                                    btn.innerHTML = '<i class="fa-solid fa-play"></i>';
-                                    btn.className = "w-12 h-12 rounded-full bg-brand text-white flex items-center justify-center shadow-[0_0_20px_rgba(79,70,229,0.4)] active:scale-90 transition-transform";
-                                    document.getElementById('timerModeText').innerText = `COMPLETATO!`;
-                                    document.getElementById('timerModeText').className = "text-[10px] text-brandAccent font-bold uppercase tracking-widest mt-1";
-                                    playBeep('long'); setTimeout(() => playBeep('long'), 400);
-                                }
-                            }
-                        }
-                    }
-                    document.getElementById('timerDisplay').innerText = formatTime(timerSeconds);
-                }, 1000);
-                
-                btn.innerHTML = '<i class="fa-solid fa-pause"></i>';
-                btn.className = "w-12 h-12 rounded-full bg-amber-500 text-white flex items-center justify-center shadow-[0_0_20px_rgba(245,158,11,0.5)] active:scale-90 transition-transform";
-            }
-            isRunning = !isRunning;
-        };
-
-        window.resetTimer = () => {
-            clearInterval(timerInterval);
-            isRunning = false;
-            timerSeconds = 0;
-            timerPhase = 'idle';
-            const btn = document.getElementById('timerPlayBtn');
-            btn.innerHTML = '<i class="fa-solid fa-play"></i>';
-            btn.className = "w-12 h-12 rounded-full bg-brand text-white flex items-center justify-center shadow-[0_0_20px_rgba(79,70,229,0.4)] active:scale-90 transition-transform";
-            
-            document.getElementById('timerModeText').className = "text-[10px] text-brandAccent font-bold uppercase tracking-widest mt-1";
-            if(timerMode === 'interval') document.getElementById('timerModeText').innerText = 'Circuito (Pronto)';
-            else document.getElementById('timerModeText').innerText = 'Libero';
-            
-            document.getElementById('timerDisplay').innerText = formatTime(timerSeconds);
-        };
-
-        // App Boot
-        loadData();
-
-        // Gestione del tasto Indietro (Hardware Android/iOS) tramite History API
-        history.replaceState({ tab: 'home' }, '', '#home');
-        window.addEventListener('popstate', (event) => {
-            // Se c'è qualche modal/finestra aperta, chiudila quando si preme indietro
-            const modals = ['settingsModal', 'msgModal', 'addWorkoutDayModal', 'addExModal', 'logSessionModal', 'addMealModal', 'addDietItemModal', 'swapFoodModal', 'addFoodModal'];
-            modals.forEach(id => {
-                const m = document.getElementById(id);
-                if(m && !m.classList.contains('hidden')) closeModal(id);
-            });
-
-            // Naviga alla schermata precedente corretta
-            if (event.state && event.state.tab) {
-                switchTab(event.state.tab, true);
-            } else {
-                switchTab('home', true);
-            }
-        });
-
-        // Configurazione PWA (Forza l'installazione NATIVA senza badge Google/Chrome)
-        const setupPWA = () => {
-            const canvas = document.createElement('canvas');
-            canvas.width = 512; canvas.height = 512;
-            const ctx = canvas.getContext('2d');
-            
-            // Disegna Sfondo (Indaco arrotondato)
-            ctx.fillStyle = '#4f46e5';
-            ctx.beginPath();
-            if(ctx.roundRect) { ctx.roundRect(0, 0, 512, 512, 100); } 
-            else { ctx.rect(0, 0, 512, 512); } // Fallback browser vecchi
-            ctx.fill();
-            
-            // Disegna Icona Pesi (Bianco)
-            ctx.fillStyle = '#ffffff';
-            ctx.fillRect(128, 128, 50, 256); // Disco SX grande
-            ctx.fillRect(78, 178, 50, 156);  // Disco SX piccolo
-            ctx.fillRect(178, 230, 156, 52); // Sbarra centrale
-            ctx.fillRect(334, 128, 50, 256); // Disco DX grande
-            ctx.fillRect(384, 178, 50, 156); // Disco DX piccolo
-
-            // Esporta in PNG Base64 (Richiesto da Chrome per l'installazione nativa pulita)
-            const iconPngUrl = canvas.toDataURL('image/png');
-
-            // Imposta icone nell'HTML
-            document.getElementById('dynamicFavicon').href = iconPngUrl;
-            document.getElementById('dynamicAppleIcon').href = iconPngUrl;
-            
-            const manifest = {
-                "name": "Workout",
-                "short_name": "Workout",
-                "start_url": window.location.pathname || "/",
-                "display": "standalone",
-                "background_color": "#f1f5f9",
-                "theme_color": "#f1f5f9",
-                "icons": [
-                    { "src": iconPngUrl, "sizes": "192x192", "type": "image/png", "purpose": "any maskable" },
-                    { "src": iconPngUrl, "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
-                ]
-            };
-            
-            const manifestBlob = new Blob([JSON.stringify(manifest)], {type: 'application/json'});
-            const manifestUrl = URL.createObjectURL(manifestBlob);
-            const link = document.createElement('link');
-            link.rel = 'manifest';
-            link.href = manifestUrl;
-            document.head.appendChild(link);
-
-            // Rimossa la registrazione del Service Worker tramite blob 
-            // per evitare il TypeError (protocollo non supportato).
-            // Il solo manifest è sufficiente per l'installazione (Aggiungi a schermata Home).
-        };
-        setupPWA();
-    </script>
+    <script src="js/foods.js"></script>
+    <script src="js/app.js"></script>
 </body>
 </html>
