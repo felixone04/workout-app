@@ -1,6 +1,6 @@
 'use strict';
 
-const APP_VERSION = '2.6.0';
+const APP_VERSION = '2.6.1';
 const STORE_KEY = 'workoutAppV1';
 const LEGACY_KEYS = ['mySigmaV3', 'mySigmaV2'];
 const SETTINGS_KEY = 'workoutAppSettings';
@@ -1864,13 +1864,13 @@ function installCardHtml() {
 function renderInstallBox() {
     const st = installState();
     const box = $('installBox');
-    if (st === 'installed') {
-        box.innerHTML = '<p class="text-sm font-semibold text-emerald-500 ml-1"><i class="fa-solid fa-circle-check mr-1"></i> Stai usando l\'app installata</p>';
-        return;
-    }
+    // nell'app installata la sezione non serve: niente da mostrare
+    if (st === 'installed') { box.innerHTML = ''; return; }
     const label = { ready: 'Installa app', inapp: 'Apri in Chrome per installare' }[st] || 'Come installare l\'app';
     const icon = { ready: 'fa-solid fa-download', inapp: 'fa-brands fa-chrome' }[st] || 'fa-solid fa-circle-question';
-    box.innerHTML = `<button onclick="installApp()" class="btn-soft w-full py-3.5 !text-brand"><i class="${icon}"></i> ${label}</button>`;
+    box.innerHTML = `
+        <p class="field-label">App</p>
+        <button onclick="installApp()" class="btn-soft w-full py-3.5 mb-6 !text-brand"><i class="${icon}"></i> ${label}</button>`;
 }
 
 function refreshInstallUI() {
