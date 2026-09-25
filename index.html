@@ -515,7 +515,7 @@
         window.currentDietDay = null;
         window.currentView = 'home';
 
-        window.switchTab = (tab) => {
+        window.switchTab = (tab, fromHistory = false) => {
             ['home', 'workout', 'diet', 'db', 'workoutDayDetail', 'dietDayDetail'].forEach(s => {
                 const el = document.getElementById(s + 'Section');
                 if(el) el.classList.add('hidden');
@@ -548,6 +548,11 @@
             if(tab === 'db') { renderDb(); updateSmartDropdown(); }
             
             currentView = tab;
+
+            // Salva la schermata nella cronologia del telefono
+            if (!fromHistory) {
+                history.pushState({ tab: tab }, '', '#' + tab);
+            }
         };
 
         window.openModal = (id, boxId) => {
@@ -1364,6 +1369,24 @@
 
         // App Boot
         loadData();
+
+        // Gestione del tasto Indietro (Hardware Android/iOS) tramite History API
+        history.replaceState({ tab: 'home' }, '', '#home');
+        window.addEventListener('popstate', (event) => {
+            // Se c'è qualche modal/finestra aperta, chiudila quando si preme indietro
+            const modals = ['settingsModal', 'msgModal', 'addWorkoutDayModal', 'addExModal', 'logSessionModal', 'addMealModal', 'addDietItemModal', 'swapFoodModal', 'addFoodModal'];
+            modals.forEach(id => {
+                const m = document.getElementById(id);
+                if(m && !m.classList.contains('hidden')) closeModal(id);
+            });
+
+            // Naviga alla schermata precedente corretta
+            if (event.state && event.state.tab) {
+                switchTab(event.state.tab, true);
+            } else {
+                switchTab('home', true);
+            }
+        });
 
         // Configurazione PWA (Forza l'installazione NATIVA senza badge Google/Chrome)
         const setupPWA = () => {
