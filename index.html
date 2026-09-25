@@ -3,6 +3,15 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    
+    <!-- PWA Settings (Mobile Install) -->
+    <meta name="theme-color" content="#f1f5f9">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
+    <meta name="apple-mobile-web-app-title" content="Workout">
+    <meta name="application-name" content="Workout">
+    <link rel="apple-touch-icon" href="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAxMDAgMTAwIj48cmVjdCB3aWR0aD0iMTAwIiBoZWlnaHQ9IjEwMCIgcng9IjIwIiBmaWxsPSIjNGY0NmU1Ii8+PHBhdGggZmlsbD0iI2ZmZiIgZD0iTTI1IDI1djUwaDE1VjI1SDI1em0zNSAwSDc1djUwSDYwVjI1em0tMjAgMjBoMTB2MTBINDBWNDV6Ii8+PC9zdmc+">
+    
     <title>Workout App</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
@@ -1282,6 +1291,43 @@
 
         // App Boot
         loadData();
+
+        // Configurazione PWA per l'installazione su Mobile (Android & iOS) in un singolo file
+        const setupPWA = () => {
+            const svgIcon = "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAxMDAgMTAwIj48cmVjdCB3aWR0aD0iMTAwIiBoZWlnaHQ9IjEwMCIgcng9IjIwIiBmaWxsPSIjNGY0NmU1Ii8+PHBhdGggZmlsbD0iI2ZmZiIgZD0iTTI1IDI1djUwaDE1VjI1SDI1em0zNSAwSDc1djUwSDYwVjI1em0tMjAgMjBoMTB2MTBINDBWNDV6Ii8+PC9zdmc+";
+            
+            const manifest = {
+                "name": "Workout",
+                "short_name": "Workout",
+                "start_url": window.location.pathname,
+                "display": "standalone",
+                "background_color": "#f1f5f9",
+                "theme_color": "#f1f5f9",
+                "icons": [
+                    { "src": svgIcon, "sizes": "192x192", "type": "image/svg+xml" },
+                    { "src": svgIcon, "sizes": "512x512", "type": "image/svg+xml" }
+                ]
+            };
+            
+            const manifestBlob = new Blob([JSON.stringify(manifest)], {type: 'application/json'});
+            const manifestUrl = URL.createObjectURL(manifestBlob);
+            const link = document.createElement('link');
+            link.rel = 'manifest';
+            link.href = manifestUrl;
+            document.head.appendChild(link);
+
+            if ('serviceWorker' in navigator) {
+                const swCode = `
+                    self.addEventListener('install', (e) => self.skipWaiting());
+                    self.addEventListener('activate', (e) => e.waitUntil(clients.claim()));
+                    self.addEventListener('fetch', (e) => {});
+                `;
+                const swBlob = new Blob([swCode], {type: 'application/javascript'});
+                const swUrl = URL.createObjectURL(swBlob);
+                navigator.serviceWorker.register(swUrl).catch(console.error);
+            }
+        };
+        setupPWA();
     </script>
 </body>
 </html>
