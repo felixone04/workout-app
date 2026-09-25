@@ -273,10 +273,7 @@
                         <h3 class="font-extrabold text-lg flex items-center gap-2"><i class="fa-solid fa-database text-brand"></i> Il mio database</h3>
                         <p class="text-sm text-muted">Alimenti personalizzati</p>
                     </div>
-                    <div class="flex gap-2">
-                        <button onclick="openScanner('db')" class="w-10 h-10 rounded-full bg-emerald-500/10 text-emerald-500 flex items-center justify-center active:scale-90 transition" aria-label="Scansiona codice a barre"><i class="fa-solid fa-barcode"></i></button>
-                        <button onclick="promptAddFood()" class="w-10 h-10 rounded-full bg-brand/10 text-brand flex items-center justify-center active:scale-90 transition" aria-label="Aggiungi alimento"><i class="fa-solid fa-plus"></i></button>
-                    </div>
+                    <button onclick="promptAddFood()" class="w-10 h-10 rounded-full bg-brand/10 text-brand flex items-center justify-center active:scale-90 transition" aria-label="Aggiungi alimento"><i class="fa-solid fa-plus"></i></button>
                 </div>
                 <div id="foodList" class="space-y-2"></div>
             </div>
@@ -483,8 +480,7 @@
             </div>
             <div class="relative mb-3">
                 <i class="fa-solid fa-magnifying-glass absolute left-4 top-1/2 -translate-y-1/2 text-muted text-sm"></i>
-                <input type="search" id="pickerSearch" placeholder="Cerca alimento…" autocomplete="off" class="field !pl-10 !pr-14" oninput="renderPickerList()">
-                <button type="button" onclick="openScanner('picker')" class="absolute right-1.5 top-1/2 -translate-y-1/2 w-10 h-10 rounded-xl bg-emerald-500/10 text-emerald-500 flex items-center justify-center active:scale-90 transition" aria-label="Scansiona codice a barre"><i class="fa-solid fa-barcode"></i></button>
+                <input type="search" id="pickerSearch" placeholder="Cerca alimento…" autocomplete="off" class="field !pl-10" oninput="renderPickerList()">
             </div>
             <div id="pickerCats" class="flex gap-1.5 overflow-x-auto no-scrollbar mb-3 -mx-1 px-1"></div>
             <div id="pickerList" class="h-[34dvh] overflow-y-auto no-scrollbar rounded-2xl border border-line bg-inset p-1.5 space-y-1 mb-4"></div>
@@ -549,30 +545,6 @@
             <div id="importPreview" class="mt-4"></div>
             <button id="importSubmit" type="submit" class="btn-primary mt-4" disabled><i class="fa-solid fa-file-import"></i> Importa</button>
         </form>
-    </div>
-
-    <!-- Scanner codice a barre -->
-    <div id="scanModal" class="modal hidden" onclick="if(event.target===this) closeModal(this.id)">
-        <div class="sheet">
-            <div class="sheet-handle"></div>
-            <div class="flex justify-between items-center mb-3">
-                <h3 class="text-xl font-extrabold">Scansiona prodotto</h3>
-                <button type="button" class="icon-btn -mr-2" onclick="closeModal('scanModal')" aria-label="Chiudi"><i class="fa-solid fa-xmark text-lg"></i></button>
-            </div>
-            <div id="scanCameraBox" class="relative rounded-3xl overflow-hidden bg-black aspect-[4/3] mb-3">
-                <video id="scanVideo" class="w-full h-full object-cover" playsinline muted></video>
-                <div class="absolute inset-0 flex items-center justify-center pointer-events-none">
-                    <div class="w-3/4 h-2/5 border-2 border-white/80 rounded-2xl shadow-[0_0_0_999px_rgb(0_0_0/0.35)]"></div>
-                </div>
-                <p id="scanStatus" class="absolute bottom-2 inset-x-2 text-center text-xs font-bold text-white drop-shadow">Avvio fotocamera…</p>
-            </div>
-            <form class="flex gap-2 mb-3" onsubmit="event.preventDefault(); lookupBarcode($('scanManual').value)">
-                <input id="scanManual" type="text" inputmode="numeric" placeholder="Oppure scrivi il codice (es. 8076800195057)" class="field !py-2.5 !text-sm flex-1 min-w-0">
-                <button type="submit" class="btn-soft px-4 text-sm !text-emerald-500 shrink-0"><i class="fa-solid fa-magnifying-glass"></i></button>
-            </form>
-            <div id="scanResult"></div>
-            <p class="text-[11px] text-muted text-center mt-3">Dati nutrizionali da <b>Open Food Facts</b>, database libero e collaborativo.</p>
-        </div>
     </div>
 
     <!-- Copia giorno dieta -->
@@ -644,6 +616,5 @@
     <script src="js/foods.js"></script>
     <script src="js/app.js"></script>
     <script src="js/share.js"></script>
-    <script src="js/scanner.js"></script>
 </body>
 </html>

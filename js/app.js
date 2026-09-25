@@ -1,6 +1,6 @@
 'use strict';
 
-const APP_VERSION = '2.4.0';
+const APP_VERSION = '2.5.0';
 const STORE_KEY = 'workoutAppV1';
 const LEGACY_KEYS = ['mySigmaV3', 'mySigmaV2'];
 const SETTINGS_KEY = 'workoutAppSettings';
@@ -128,10 +128,7 @@ function normalizeData(p) {
             id: String(f.id || `${Date.now()}-${i}`),
             name: String(f.name),
             category: CATEGORIES.includes(f.category) ? f.category : 'Carboidrati',
-            macroValue: parseNum(f.macroValue) || 0,
-            // alimenti scansionati: codice a barre e valori completi per 100 g
-            ...(f.barcode ? { barcode: String(f.barcode) } : {}),
-            ...(f.macros && typeof f.macros === 'object' ? { macros: f.macros } : {})
+            macroValue: parseNum(f.macroValue) || 0
         }));
     }
     return out;
@@ -1473,7 +1470,7 @@ function renderDb() {
                 <span class="w-9 h-9 rounded-xl ${s.bg} ${s.text} font-extrabold text-sm flex items-center justify-center shrink-0">${s.short}</span>
                 <div class="flex-1 min-w-0">
                     <p class="font-bold text-sm truncate">${esc(f.name)}</p>
-                    <p class="text-xs text-muted font-semibold">${f.category === 'Verdure' ? 'Verdura libera' : `${fmt(f.macroValue)}g ${s.label.toLowerCase()} / 100g`}${f.barcode ? ' · <i class="fa-solid fa-barcode"></i>' : ''}</p>
+                    <p class="text-xs text-muted font-semibold">${f.category === 'Verdure' ? 'Verdura libera' : `${fmt(f.macroValue)}g ${s.label.toLowerCase()} / 100g`}</p>
                 </div>
                 <button onclick="deleteDbFood(${i})" class="w-9 h-9 rounded-full text-muted hover:text-rose-500 flex items-center justify-center" aria-label="Elimina"><i class="fa-solid fa-trash-can text-sm"></i></button>
             </div>`;
