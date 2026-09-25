@@ -10,7 +10,10 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="default">
     <meta name="apple-mobile-web-app-title" content="Workout">
     <meta name="application-name" content="Workout">
-    <link rel="apple-touch-icon" href="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAxMDAgMTAwIj48cmVjdCB3aWR0aD0iMTAwIiBoZWlnaHQ9IjEwMCIgcng9IjIwIiBmaWxsPSIjNGY0NmU1Ii8+PHBhdGggZmlsbD0iI2ZmZiIgZD0iTTI1IDI1djUwaDE1VjI1SDI1em0zNSAwSDc1djUwSDYwVjI1em0tMjAgMjBoMTB2MTBINDBWNDV6Ii8+PC9zdmc+">
+    
+    <!-- Link dinamici per l'icona PWA -->
+    <link id="dynamicFavicon" rel="icon" href="">
+    <link id="dynamicAppleIcon" rel="apple-touch-icon" href="">
     
     <title>Workout App</title>
     <script src="https://cdn.tailwindcss.com"></script>
@@ -396,6 +399,22 @@
             </div>
             <button onclick="confirmAddDietItem()" class="w-full bg-gradient-to-r from-emerald-500 to-emerald-700 text-white py-4 rounded-2xl font-bold shadow-[0_10px_20px_rgba(16,185,129,0.25)] active:scale-95 transition-transform">Aggiungi al Pasto</button>
             <button onclick="closeModal('addDietItemModal')" class="w-full mt-3 py-3 font-bold text-textMuted hover:text-textMain">Annulla</button>
+        </div>
+    </div>
+
+    <!-- Swap Food Modal -->
+    <div id="swapFoodModal" class="fixed inset-0 modal-overlay hidden z-50 flex items-end justify-center p-0 opacity-0 transition-opacity">
+        <div id="swapFoodBox" class="bg-bgSurface border-t border-borderBase rounded-t-[2rem] p-6 w-full max-w-sm translate-y-full transition-transform shadow-2xl max-h-[85vh] overflow-y-auto no-scrollbar">
+            <div class="flex justify-between items-center mb-5">
+                <h3 class="text-xl font-bold text-textMain">Sostituisci</h3>
+                <button onclick="closeModal('swapFoodModal')"><i class="fa-solid fa-xmark text-xl text-textMuted hover:text-textMain"></i></button>
+            </div>
+            <div id="swapFoodInfo" class="bg-brand/10 text-brand p-4 rounded-xl mb-4 text-center border border-brand/20">
+                <!-- Info popolate dinamicamente -->
+            </div>
+            <div id="swapAlternativesList" class="space-y-2 pb-4">
+                <!-- Alternative popolate dinamicamente -->
+            </div>
         </div>
     </div>
 
@@ -984,9 +1003,10 @@
                             <p class="text-xs font-bold text-textMain">${item.name} ${macroNote}</p>
                             <p class="text-[9px] uppercase tracking-wider text-textMuted">${item.category}</p>
                         </div>
-                        <div class="flex items-center gap-3">
+                        <div class="flex items-center gap-2">
                             <span class="text-xs font-extrabold text-emerald-600 bg-emerald-50 px-2 py-1 rounded-md border border-emerald-100">${item.grams}g</span>
-                            <button onclick="deleteDietItem('${day}', ${mIdx}, ${iIdx})" class="text-textMuted hover:text-rose-500 p-1 transition-colors"><i class="fa-solid fa-xmark"></i></button>
+                            <button onclick="promptSwapFood('${day}', ${mIdx}, ${iIdx})" class="text-textMuted hover:text-brandAccent p-1.5 transition-colors active:scale-90"><i class="fa-solid fa-rotate"></i></button>
+                            <button onclick="deleteDietItem('${day}', ${mIdx}, ${iIdx})" class="text-textMuted hover:text-rose-500 p-1.5 transition-colors active:scale-90"><i class="fa-solid fa-trash-can"></i></button>
                         </div>
                     </div>
                 `}).join('');
@@ -1096,6 +1116,59 @@
             window.weeklyDiet[day][mIdx].items.splice(iIdx, 1); 
             persistData(); 
             if (currentView === 'dietDayDetail') renderDietDay(day); 
+        };
+
+        let currentSwap = { day: null, mIdx: null, iIdx: null };
+
+        window.promptSwapFood = (day, mIdx, iIdx) => {
+            currentSwap = { day, mIdx, iIdx };
+            const item = window.weeklyDiet[day][mIdx].items[iIdx];
+            const allFoods = [...presetDb, ...window.foodDb];
+            const sourceFood = allFoods.find(f => f.name === item.name);
+
+            if(!sourceFood || sourceFood.macroValue === 0) {
+                showMessage("Avviso", "Le verdure libere o alimenti senza macro principali si gestiscono manualmente.");
+                return;
+            }
+
+            const totalMacro = (sourceFood.macroValue / 100) * item.grams;
+
+            document.getElementById('swapFoodInfo').innerHTML = `
+                <p class="text-[10px] uppercase font-bold tracking-wider mb-1">Stai sostituendo</p>
+                <p class="text-lg font-extrabold">${item.grams}g di ${item.name}</p>
+                <p class="text-xs mt-1 font-semibold opacity-80">(${totalMacro.toFixed(1)}g di ${sourceFood.category})</p>
+            `;
+
+            const alternatives = allFoods.filter(f => f.category === sourceFood.category && f.name !== sourceFood.name && f.macroValue > 0);
+
+            let altHtml = alternatives.map(f => {
+                const neededGrams = (totalMacro * 100) / f.macroValue;
+                return `
+                    <button onclick="confirmSwapFood('${f.name}', ${neededGrams})" class="w-full flex justify-between items-center bg-bgBase hover:bg-borderBase border border-borderBase p-3 rounded-xl shadow-sm transition-colors active:scale-95 group">
+                        <span class="font-bold text-sm text-textMain block">${f.name}</span>
+                        <span class="text-brandAccent font-extrabold bg-brandAccent/10 px-3 py-1.5 rounded-lg border border-brandAccent/20 group-hover:bg-brandAccent group-hover:text-white transition-colors flex-shrink-0 ml-2">${neededGrams.toFixed(0)}g</span>
+                    </button>
+                `;
+            }).join('');
+
+            document.getElementById('swapAlternativesList').innerHTML = altHtml || '<p class="text-xs text-textMuted text-center py-4">Nessuna alternativa trovata nel DB per questa categoria.</p>';
+
+            openModal('swapFoodModal', 'swapFoodBox');
+        };
+
+        window.confirmSwapFood = (newName, newGrams) => {
+            const { day, mIdx, iIdx } = currentSwap;
+            const targetFood = [...presetDb, ...window.foodDb].find(f => f.name === newName);
+            
+            window.weeklyDiet[day][mIdx].items[iIdx] = {
+                name: newName,
+                category: targetFood.category,
+                grams: Math.round(newGrams) // Arrotonda al grammo per facilitare la bilancia
+            };
+
+            persistData();
+            closeModal('swapFoodModal');
+            if (currentView === 'dietDayDetail') renderDietDay(day);
         };
 
         window.renderDb = () => {
@@ -1340,17 +1413,9 @@
             link.href = manifestUrl;
             document.head.appendChild(link);
 
-            // Registra Service Worker (Necessario per passare il test PWA del browser)
-            if ('serviceWorker' in navigator) {
-                const swCode = `
-                    self.addEventListener('install', (e) => self.skipWaiting());
-                    self.addEventListener('activate', (e) => e.waitUntil(clients.claim()));
-                    self.addEventListener('fetch', (e) => { /* Vuoto per permettere offline check */ });
-                `;
-                const swBlob = new Blob([swCode], {type: 'application/javascript'});
-                const swUrl = URL.createObjectURL(swBlob);
-                navigator.serviceWorker.register(swUrl).catch(console.error);
-            }
+            // Rimossa la registrazione del Service Worker tramite blob 
+            // per evitare il TypeError (protocollo non supportato).
+            // Il solo manifest è sufficiente per l'installazione (Aggiungi a schermata Home).
         };
         setupPWA();
     </script>
