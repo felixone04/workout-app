@@ -311,7 +311,7 @@ function renderImportPreview(error = '') {
                 ${d.exercises.map((ex) => `
                     <div class="py-1.5 border-t border-line/70 first:border-0">
                         <p class="text-sm font-bold">${ex._flag ? '<i class="fa-solid fa-triangle-exclamation text-amber-500 mr-1"></i>' : ''}${esc(ex.name)}${ex.type === 'superset' ? ' <span class="text-[9px] font-extrabold uppercase tracking-wider bg-accent text-white px-1.5 py-0.5 rounded-full align-middle">Superset</span>' : ''}</p>
-                        <div class="flex flex-wrap gap-1 mt-1"><span class="chip">${esc(ex.sets)} <span class="text-muted text-[10px]">SERIE</span></span>${planHtml(ex.plan1)}${ex.type === 'superset' ? '<span class="text-muted text-xs self-center">+</span>' + planHtml(ex.plan2) : ''}</div>
+                        <div class="mt-1.5">${planBlock(ex.plan1, `<span class="chip">${esc(ex.sets)} <span class="text-muted text-[10px]">SERIE</span></span>`)}</div>${ex.type === 'superset' ? `<p class="text-[10px] font-extrabold text-accent mt-1.5 mb-1">+ ${esc(ex.subName2)}</p>${planBlock(ex.plan2)}` : ''}
                         ${ex.desc ? `<p class="text-[11px] text-muted italic mt-1">${esc(ex.desc)}</p>` : ''}
                     </div>`).join('')}
             </div>`).join('')}

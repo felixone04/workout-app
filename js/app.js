@@ -1,6 +1,6 @@
 'use strict';
 
-const APP_VERSION = '2.6.3';
+const APP_VERSION = '2.7.0';
 const STORE_KEY = 'workoutAppV1';
 const LEGACY_KEYS = ['mySigmaV3', 'mySigmaV2'];
 const SETTINGS_KEY = 'workoutAppSettings';
@@ -60,8 +60,8 @@ function shake(el) {
 }
 
 // ================= DATI =================
-const state = { workouts: [], weeklyDiet: {}, foodDb: [] };
-let settings = { theme: 'auto', timer: { sets: 3, work: 45, rest: 90 } };
+const state = { workouts: [], weeklyDiet: {}, foodDb: [], weights: [], weightGoal: 'none' };
+let settings = { theme: 'auto', timer: { sets: 3, work: 45, rest: 90 }, sound: true, volume: 80, voice: true };
 
 // I log della versione precedente hanno solo la data testuale ("20 set 2026"): ricava il timestamp.
 const IT_MONTHS = ['gen', 'feb', 'mar', 'apr', 'mag', 'giu', 'lug', 'ago', 'set', 'ott', 'nov', 'dic'];
@@ -104,7 +104,7 @@ function normalizeExercise(e) {
 }
 
 function normalizeData(p) {
-    const out = { workouts: [], weeklyDiet: {}, foodDb: [] };
+    const out = { workouts: [], weeklyDiet: {}, foodDb: [], weights: [], weightGoal: 'none' };
     if (Array.isArray(p.workouts)) {
         out.workouts = p.workouts.filter((d) => d && typeof d === 'object').map((d) => ({
             ...d,
@@ -123,15 +123,38 @@ function normalizeData(p) {
             }))
         }));
     });
-    if (Array.isArray(p.foodDb)) {
-        out.foodDb = p.foodDb.filter((f) => f && f.name).map((f, i) => ({
-            id: String(f.id || `${Date.now()}-${i}`),
-            name: String(f.name),
-            category: CATEGORIES.includes(f.category) ? f.category : 'Carboidrati',
-            macroValue: parseNum(f.macroValue) || 0
-        }));
-    }
+    if (Array.isArray(p.foodDb)) out.foodDb = p.foodDb.filter((f) => f && f.name).map(normalizeCustomFood);
+    out.weights = (Array.isArray(p.weights) ? p.weights : [])
+        .filter((w) => w && /^\d{4}-\d{2}-\d{2}$/.test(w.date) && parseNum(w.kg) > 0)
+        .map((w) => ({ date: w.date, kg: Math.round(parseNum(w.kg) * 10) / 10 }));
+    // un solo valore per giorno (l'ultimo inserito), in ordine cronologico
+    out.weights = [...new Map(out.weights.map((w) => [w.date, w])).values()].sort((a, b) => a.date.localeCompare(b.date));
+    out.weightGoal = ['lose', 'gain', 'keep'].includes(p.weightGoal) ? p.weightGoal : 'none';
     return out;
+}
+
+/**
+ * Alimento personale con carboidrati/proteine/grassi per 100 g.
+ * Quelli creati con le versioni precedenti avevano solo il macro principale:
+ * gli altri due restano a 0 e l'alimento viene segnato come "da completare".
+ */
+function normalizeCustomFood(f, i) {
+    const category = CATEGORIES.includes(f.category) ? f.category : 'Carboidrati';
+    const num = (v) => { const n = parseNum(v); return n >= 0 ? n : 0; };
+    const hasFull = ['c', 'p', 'f'].some((k) => f[k] !== undefined && f[k] !== null && f[k] !== '');
+    const food = { id: String(f.id || `${Date.now()}-${i}`), name: String(f.name), category };
+    if (hasFull) {
+        food.c = num(f.c); food.p = num(f.p); food.f = num(f.f);
+    } else {
+        const mv = num(f.macroValue);
+        food.c = category === 'Carboidrati' ? mv : 0;
+        food.p = category === 'Proteine' ? mv : 0;
+        food.f = category === 'Grassi' ? mv : 0;
+        if (category !== 'Verdure') food.partial = true;
+    }
+    if (f.partial && hasFull) food.partial = true;
+    food.macroValue = MAIN_MACRO_KEY[category] ? food[MAIN_MACRO_KEY[category]] : 0;
+    return food;
 }
 
 function loadData() {
@@ -172,22 +195,58 @@ function rebuildFoodIndex() {
 const allFoods = () => [...foodIndex.values()];
 const findFood = (name) => foodIndex.get(name);
 
-function itemMacro(item) {
-    const f = findFood(item.name);
-    if (!f) return null;
-    return { category: f.category, grams: (f.macroValue * item.grams) / 100 };
+// ---- Valori nutrizionali ----
+// Ogni alimento ha carboidrati (c), proteine (p) e grassi (f) per 100 g.
+// Calorie: 4 kcal per grammo di carboidrati e proteine, 9 kcal per grammo di grassi.
+const NUTR = [
+    { k: 'c', cat: 'Carboidrati' },
+    { k: 'p', cat: 'Proteine' },
+    { k: 'f', cat: 'Grassi' }
+];
+const kcalOf = (n) => n.c * 4 + n.p * 4 + n.f * 9;
+const emptyNutr = () => ({ c: 0, p: 0, f: 0, kcal: 0 });
+
+function nutrientsOf(food, grams) {
+    const k = grams / 100;
+    const n = { c: (food.c || 0) * k, p: (food.p || 0) * k, f: (food.f || 0) * k };
+    n.kcal = kcalOf(n);
+    return n;
 }
 
-function sumMacros(meals) {
-    const t = { Carboidrati: 0, Proteine: 0, Grassi: 0 };
+function itemNutrients(item) {
+    const f = findFood(item.name);
+    return f ? nutrientsOf(f, item.grams) : null;
+}
+
+function sumNutrients(meals) {
+    const t = emptyNutr();
     meals.forEach((m) => m.items.forEach((it) => {
-        const mm = itemMacro(it);
-        if (mm && t[mm.category] !== undefined) t[mm.category] += mm.grams;
+        const n = itemNutrients(it);
+        if (n) { t.c += n.c; t.p += n.p; t.f += n.f; t.kcal += n.kcal; }
     }));
     return t;
 }
 
-const dayMacros = (dayIdx) => sumMacros(state.weeklyDiet[DAYS[dayIdx]] || []);
+const dayNutrients = (dayIdx) => sumNutrients(state.weeklyDiet[DAYS[dayIdx]] || []);
+
+/** Quota di calorie da ciascun macro (percentuali intere che sommano a 100). */
+function macroSplit(n) {
+    const kc = { c: n.c * 4, p: n.p * 4, f: n.f * 9 };
+    const tot = kc.c + kc.p + kc.f;
+    if (!tot) return { c: 0, p: 0, f: 0 };
+    const raw = NUTR.map(({ k }) => ({ k, v: (kc[k] / tot) * 100 }));
+    const out = {};
+    raw.forEach((r) => { out[r.k] = Math.floor(r.v); });
+    let rest = 100 - raw.reduce((a, r) => a + out[r.k], 0);
+    raw.sort((a, b) => (b.v - Math.floor(b.v)) - (a.v - Math.floor(a.v))).forEach((r) => { if (rest > 0) { out[r.k]++; rest--; } });
+    return out;
+}
+
+/** Riga compatta "C 12 · P 25 · G 3 · 180 kcal" */
+function nutrLine(n, { kcal = true } = {}) {
+    return NUTR.map(({ k, cat }) => `<span class="${MACRO[cat].text}">${MACRO[cat].short} ${fmt(n[k], 1)}</span>`).join(' <span class="text-muted/60">·</span> ') +
+        (kcal ? ` <span class="text-muted/60">·</span> <span class="text-ink">${fmt(n.kcal, 0)} kcal</span>` : '');
+}
 
 // ================= TEMA =================
 const darkQuery = window.matchMedia('(prefers-color-scheme: dark)');
@@ -206,6 +265,7 @@ const VIEWS = {
     workout: { nav: 'workout', eyebrow: () => 'Allenamento', title: () => 'Schede', timer: true },
     workoutDay: { nav: 'workout', parent: 'workout', eyebrow: () => 'Scheda', title: () => state.workouts[nav.workoutDay]?.name || '', timer: true },
     calendar: { nav: 'workout', parent: 'workout', eyebrow: () => 'Allenamento', title: () => 'Calendario' },
+    weight: { nav: 'home', parent: 'home', eyebrow: () => 'Corpo', title: () => 'Peso corporeo' },
     diet: { nav: 'diet', eyebrow: () => 'Dieta', title: () => 'Settimana' },
     dietDay: { nav: 'diet', parent: 'diet', eyebrow: () => 'Dieta', title: () => DAYS[nav.dietDay] || '' },
     db: { nav: 'db', eyebrow: () => 'Strumenti', title: () => 'Conversioni' }
@@ -261,7 +321,7 @@ function render() {
     document.body.classList.toggle('with-timer', !!v.timer);
 
     ({
-        home: renderHome, workout: renderWorkoutGrid, workoutDay: renderWorkoutDay, calendar: renderCalendar,
+        home: renderHome, workout: renderWorkoutGrid, workoutDay: renderWorkoutDay, calendar: renderCalendar, weight: renderWeight,
         diet: renderDietGrid, dietDay: renderDietDay, db: renderDb
     })[nav.view]();
 }
@@ -393,18 +453,52 @@ function relDate(ts) {
     return new Date(ts).toLocaleDateString('it-IT', { day: 'numeric', month: 'short' });
 }
 
-function macroTiles(m, size = 'lg') {
-    return ['Carboidrati', 'Proteine', 'Grassi'].map((k) => `
-        <div class="${MACRO[k].bg} border ${MACRO[k].border} rounded-2xl ${size === 'lg' ? 'py-3' : 'py-2'} text-center">
-            <p class="${size === 'lg' ? 'text-xl' : 'text-base'} font-extrabold ${MACRO[k].text} leading-none">${fmt(m[k], 0)}<span class="text-xs font-bold">g</span></p>
-            <p class="text-[10px] font-bold uppercase tracking-wider text-muted mt-1">${MACRO[k].label}</p>
-        </div>`).join('');
+/** Riquadri calorie + macro (grammi e % delle calorie) con barra di ripartizione. */
+function nutritionSummary(n, size = 'lg') {
+    const split = macroSplit(n);
+    const lg = size === 'lg';
+    const tile = (value, unit, label, cls, bg, sub) => `
+        <div class="${bg} rounded-2xl ${lg ? 'py-3' : 'py-2'} px-1 text-center">
+            <p class="${lg ? 'text-xl' : 'text-base'} font-extrabold ${cls} leading-none">${value}<span class="text-[10px] font-bold">${unit}</span></p>
+            <p class="text-[10px] font-bold uppercase tracking-wider text-muted mt-1">${label}</p>
+            ${sub !== undefined ? `<p class="text-[10px] font-bold ${cls} opacity-80 leading-none mt-0.5">${sub}</p>` : ''}
+        </div>`;
+    const bar = NUTR.map(({ k, cat }) => split[k] ? `<div class="${MACRO[cat].text.replace('text-', 'bg-')} h-full" style="width:${split[k]}%"></div>` : '').join('');
+    return `
+        <div class="grid grid-cols-4 gap-2">
+            ${tile(fmt(n.kcal, 0), '', 'Kcal', 'text-ink', 'bg-inset border border-line')}
+            ${NUTR.map(({ k, cat }) => tile(fmt(n[k], 0), 'g', MACRO[cat].label, MACRO[cat].text, `${MACRO[cat].bg} border ${MACRO[cat].border}`, `${split[k]}%`)).join('')}
+        </div>
+        <div class="flex h-2 rounded-full overflow-hidden bg-inset mt-2">${bar}</div>`;
+}
+
+function weightHomeCard() {
+    const w = state.weights;
+    const last = w[w.length - 1];
+    let sub = 'Registra il peso per seguire i progressi';
+    let delta = '';
+    if (last) {
+        sub = `Ultima pesata: ${relDate(keyToDate(last.date).getTime())}`;
+        const prev = w[w.length - 2];
+        if (prev) delta = weightDeltaBadge(last.kg - prev.kg);
+    }
+    return `
+        <button onclick="go('weight')" class="card w-full text-left p-5 mb-3 active:scale-[0.98] transition flex items-center gap-3">
+            <div class="w-12 h-12 rounded-2xl bg-accent/10 text-accent flex items-center justify-center text-xl shrink-0"><i class="fa-solid fa-weight-scale"></i></div>
+            <div class="flex-1 min-w-0">
+                <h3 class="text-lg font-extrabold leading-tight">Peso corporeo</h3>
+                <p class="text-sm text-muted font-medium truncate">${sub}</p>
+            </div>
+            <div class="text-right shrink-0">
+                ${last ? `<p class="text-2xl font-extrabold leading-none">${fmt(last.kg)}<span class="text-xs font-bold text-muted"> kg</span></p>${delta ? `<p class="text-xs font-bold mt-1">${delta}</p>` : ''}` : '<span class="text-sm font-bold text-accent"><i class="fa-solid fa-plus"></i> Aggiungi</span>'}
+            </div>
+        </button>`;
 }
 
 function renderHome() {
     const t = todayDayIdx();
     const meals = state.weeklyDiet[DAYS[t]] || [];
-    const m = dayMacros(t);
+    const n = dayNutrients(t);
     const nEx = state.workouts.reduce((a, d) => a + d.exercises.length, 0);
     const last = lastTrainingTs();
     const hour = new Date().getHours();
@@ -438,9 +532,158 @@ function renderHome() {
                 </div>
                 <i class="fa-solid fa-chevron-right text-muted"></i>
             </div>
-            <div class="grid grid-cols-3 gap-2">${macroTiles(m, 'sm')}</div>
+            ${nutritionSummary(n, 'sm')}
         </button>
+
+        ${weightHomeCard()}
     `;
+}
+
+// ================= PESO CORPOREO =================
+// Una pesata al giorno: [{ date: 'AAAA-MM-GG', kg }] in ordine cronologico.
+let weightRange = 90;
+
+/** Colore di una variazione in base all'obiettivo (verde = verso l'obiettivo). */
+function weightTone(d) {
+    const goal = state.weightGoal;
+    if (Math.abs(d) < 0.05) return 'text-muted';
+    if (goal === 'lose') return d < 0 ? 'text-emerald-500' : 'text-rose-500';
+    if (goal === 'gain') return d > 0 ? 'text-emerald-500' : 'text-rose-500';
+    if (goal === 'keep') return Math.abs(d) <= 0.5 ? 'text-emerald-500' : 'text-amber-500';
+    return 'text-ink';
+}
+
+function weightDeltaBadge(d) {
+    const icon = Math.abs(d) < 0.05 ? 'fa-equals' : d > 0 ? 'fa-arrow-trend-up' : 'fa-arrow-trend-down';
+    return `<span class="${weightTone(d)}"><i class="fa-solid ${icon} mr-1"></i>${d > 0 ? '+' : d < 0 ? '−' : ''}${fmt(Math.abs(d))} kg</span>`;
+}
+
+const fmtDayLong = (k) => keyToDate(k).toLocaleDateString('it-IT', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' });
+
+async function saveWeight() {
+    const kgEl = $('weightKg');
+    const kg = parseNum(kgEl.value);
+    const date = $('weightDate').value;
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || date > dayKey(new Date())) { shake($('weightDate')); return; }
+    if (!(kg >= 20 && kg <= 400)) { shake(kgEl); return; }
+    const exists = state.weights.some((w) => w.date === date);
+    state.weights = state.weights.filter((w) => w.date !== date);
+    state.weights.push({ date, kg: Math.round(kg * 10) / 10 });
+    state.weights.sort((a, b) => a.date.localeCompare(b.date));
+    persist();
+    kgEl.value = '';
+    kgEl.blur();
+    toast(exists ? 'Pesata aggiornata' : 'Peso salvato');
+    render();
+}
+
+function editWeight(date) {
+    const w = state.weights.find((x) => x.date === date);
+    if (!w) return;
+    $('weightDate').value = w.date;
+    $('weightKg').value = String(w.kg).replace('.', ',');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+    $('weightKg').focus({ preventScroll: true });
+}
+
+async function deleteWeight(date) {
+    const w = state.weights.find((x) => x.date === date);
+    if (!w) return;
+    if (!(await confirmDialog('Eliminare la pesata?', `${fmtDayLong(date)}: ${fmt(w.kg)} kg`))) return;
+    state.weights = state.weights.filter((x) => x.date !== date);
+    persist(); render();
+}
+
+function setWeightRange(r) { weightRange = r; render(); }
+function setWeightGoal(g) { state.weightGoal = state.weightGoal === g ? 'none' : g; persist(); render(); }
+
+/** Grafico SVG: linea del peso, media mobile a 7 giorni e punti. */
+function weightChartSvg(points) {
+    if (points.length < 2) {
+        return `<p class="text-sm text-muted text-center py-8">${points.length ? 'Aggiungi almeno un\'altra pesata per vedere il grafico.' : 'Nessuna pesata in questo periodo.'}</p>`;
+    }
+    const W = 320, H = 170, L = 34, R = 8, T = 10, B = 24;
+    const t0 = keyToDate(points[0].date).getTime();
+    const t1 = keyToDate(points[points.length - 1].date).getTime();
+    const kgs = points.map((p) => p.kg);
+    let lo = Math.min(...kgs), hi = Math.max(...kgs);
+    const pad = Math.max(0.5, (hi - lo) * 0.15);
+    lo -= pad; hi += pad;
+    const x = (d) => L + ((keyToDate(d).getTime() - t0) / Math.max(1, t1 - t0)) * (W - L - R);
+    const y = (kg) => T + (1 - (kg - lo) / (hi - lo)) * (H - T - B);
+    const line = points.map((p, i) => `${i ? 'L' : 'M'}${x(p.date).toFixed(1)},${y(p.kg).toFixed(1)}`).join(' ');
+    const area = `${line} L${x(points[points.length - 1].date).toFixed(1)},${H - B} L${x(points[0].date).toFixed(1)},${H - B} Z`;
+    // media mobile: media delle pesate nei 7 giorni precedenti (inclusi)
+    const avg = points.map((p) => {
+        const end = keyToDate(p.date).getTime();
+        const win = points.filter((q) => { const t = keyToDate(q.date).getTime(); return t <= end && t > end - 7 * 86400000; });
+        return { date: p.date, kg: win.reduce((a, q) => a + q.kg, 0) / win.length };
+    });
+    const avgLine = avg.map((p, i) => `${i ? 'L' : 'M'}${x(p.date).toFixed(1)},${y(p.kg).toFixed(1)}`).join(' ');
+    const grid = [0, 0.5, 1].map((f) => {
+        const kg = lo + (hi - lo) * (1 - f);
+        const yy = T + f * (H - T - B);
+        return `<line x1="${L}" x2="${W - R}" y1="${yy}" y2="${yy}" class="stroke-line" stroke-width="1"/><text x="${L - 5}" y="${yy + 3.5}" text-anchor="end" class="fill-muted" font-size="10" font-weight="700">${fmt(kg)}</text>`;
+    }).join('');
+    const dLabel = (k) => keyToDate(k).toLocaleDateString('it-IT', { day: 'numeric', month: 'short' });
+    const dots = points.length <= 40 ? points.map((p) => `<circle cx="${x(p.date).toFixed(1)}" cy="${y(p.kg).toFixed(1)}" r="3" class="fill-surface stroke-accent" stroke-width="2"/>`).join('') : '';
+    return `
+        <svg viewBox="0 0 ${W} ${H}" class="w-full h-auto" role="img" aria-label="Grafico del peso">
+            <defs><linearGradient id="wGrad" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="rgb(var(--c-accent))" stop-opacity=".25"/><stop offset="1" stop-color="rgb(var(--c-accent))" stop-opacity="0"/></linearGradient></defs>
+            ${grid}
+            <path d="${area}" fill="url(#wGrad)"/>
+            ${points.length >= 3 ? `<path d="${avgLine}" fill="none" class="stroke-muted" stroke-width="1.5" stroke-dasharray="4 4" opacity=".7"/>` : ''}
+            <path d="${line}" fill="none" class="stroke-accent" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>
+            ${dots}
+            <text x="${L}" y="${H - 6}" class="fill-muted" font-size="10" font-weight="700">${dLabel(points[0].date)}</text>
+            <text x="${W - R}" y="${H - 6}" text-anchor="end" class="fill-muted" font-size="10" font-weight="700">${dLabel(points[points.length - 1].date)}</text>
+        </svg>
+        ${points.length >= 3 ? '<p class="text-[11px] text-muted font-semibold mt-1 flex items-center gap-3"><span class="flex items-center gap-1"><span class="w-4 h-0.5 bg-accent rounded"></span> Peso</span><span class="flex items-center gap-1"><span class="w-4 border-t-2 border-dashed border-muted"></span> Media 7 giorni</span></p>' : ''}`;
+}
+
+function renderWeight() {
+    const all = state.weights;
+    if (!$('weightDate').value) $('weightDate').value = dayKey(new Date());
+    $('weightDate').max = dayKey(new Date());
+    document.querySelectorAll('#weightRangeSeg .seg').forEach((b) => b.classList.toggle('active', Number(b.dataset.range) === weightRange));
+    document.querySelectorAll('#weightGoalSeg .seg').forEach((b) => b.classList.toggle('active', b.dataset.goal === state.weightGoal));
+
+    const last = all[all.length - 1];
+    const prev = all[all.length - 2];
+    const first = all[0];
+    const stat = (value, label, sub) => `
+        <div class="card py-3 px-1 text-center">
+            <p class="text-xl font-extrabold leading-none">${value}</p>
+            <p class="text-[10px] font-bold uppercase tracking-wider text-muted mt-1.5 leading-tight">${label}</p>
+            ${sub ? `<p class="text-[10px] font-semibold text-muted mt-0.5">${sub}</p>` : ''}
+        </div>`;
+    $('weightStats').innerHTML = last
+        ? stat(`${fmt(last.kg)}<span class="text-xs text-muted"> kg</span>`, 'Attuale', relDate(keyToDate(last.date).getTime())) +
+          stat(prev ? `<span class="text-base">${weightDeltaBadge(last.kg - prev.kg)}</span>` : '—', 'Dall\'ultima', prev ? fmtDayLong(prev.date).replace(/ \d{4}$/, '') : '') +
+          stat(all.length > 1 ? `<span class="text-base">${weightDeltaBadge(last.kg - first.kg)}</span>` : '—', 'Dall\'inizio', all.length > 1 ? `${all.length} pesate` : '')
+        : '';
+
+    const from = weightRange ? dayKey(new Date(Date.now() - weightRange * 86400000)) : '';
+    $('weightChart').innerHTML = weightChartSvg(all.filter((w) => w.date >= from));
+
+    if (!all.length) {
+        $('weightList').innerHTML = '<div class="card border-dashed p-6 text-center text-sm text-muted">Nessuna pesata. Inserisci il peso di oggi qui sopra.</div>';
+        return;
+    }
+    $('weightList').innerHTML = [...all].reverse().map((w, i, arr) => {
+        const before = arr[i + 1];
+        return `
+            <div class="card !rounded-2xl flex items-center gap-3 px-4 py-3">
+                <button onclick="editWeight('${w.date}')" class="flex-1 min-w-0 flex items-center gap-3 text-left">
+                    <div class="flex-1 min-w-0">
+                        <p class="text-sm font-bold capitalize">${esc(fmtDayLong(w.date))}</p>
+                        <p class="text-xs font-bold mt-0.5">${before ? weightDeltaBadge(w.kg - before.kg) : '<span class="text-muted">Prima pesata</span>'}</p>
+                    </div>
+                    <p class="text-lg font-extrabold font-mono">${fmt(w.kg)}<span class="text-xs text-muted"> kg</span></p>
+                </button>
+                <button onclick="deleteWeight('${w.date}')" class="w-8 h-8 -mr-1 rounded-full text-muted hover:text-rose-500 flex items-center justify-center" aria-label="Elimina"><i class="fa-solid fa-xmark text-sm"></i></button>
+            </div>`;
+    }).join('');
 }
 
 // ================= ALLENAMENTO =================
@@ -592,7 +835,7 @@ function renderCalendar() {
                     ${g.items.map((it) => `
                         <div class="py-2 border-b border-line/70 last:border-0">
                             <p class="text-sm font-bold ${it.which === 2 ? 'text-accent' : ''}">${esc(it.name)}</p>
-                            <div class="flex flex-wrap gap-1 mt-1">${setPills(it.sets)}</div>
+                            <div class="mt-1.5">${setGrid(it.sets, { compact: true })}</div>
                         </div>`).join('')}
                 </div>
             </article>`).join('')}
@@ -681,21 +924,55 @@ function bestWeight(list) {
     return best > 0 ? best : null;
 }
 
-function setPills(sets, { numbered = false, best = null } = {}) {
-    return sets.map((s, i) => {
-        const isBest = best !== null && parseNum(s.weight) === best;
-        return `<span class="chip ${isBest ? '!bg-amber-500/10 !border-amber-500/30' : ''}">${numbered ? `<span class="text-muted text-[10px]">S${i + 1}</span>` : ''}${esc(fmtSet(s))}</span>`;
+/**
+ * Serie di un esercizio, senza "a capo" disordinati:
+ * - scheda (compact=false): tabellina Serie | Kg | Reps, una riga per serie;
+ * - sessioni e storico (compact=true): caselle uguali su un'unica riga, scorrevole col dito.
+ */
+function setGrid(sets, { best = null, compact = false } = {}) {
+    const isBest = (s) => best !== null && parseNum(s.weight) === best;
+    if (!compact) {
+        const rows = sets.map((s, i) => {
+            const w = fmtW(s.weight);
+            return `
+                <div class="grid grid-cols-[3.25rem_1fr_1fr] items-center px-3 py-1.5 ${isBest(s) ? 'bg-amber-500/10' : ''}">
+                    <span class="text-xs font-extrabold text-muted">${i + 1}</span>
+                    <span class="text-sm font-mono font-extrabold">${w ? `${esc(w)}<span class="text-[10px] text-muted font-bold ml-0.5">kg</span>` : '<span class="text-muted">—</span>'}</span>
+                    <span class="text-sm font-mono font-extrabold">${esc(s.reps || '—')}<span class="text-[10px] text-muted font-bold ml-0.5">rip</span></span>
+                </div>`;
+        }).join('');
+        return `
+            <div class="rounded-xl border border-line overflow-hidden bg-surface">
+                <div class="grid grid-cols-[3.25rem_1fr_1fr] px-3 py-1 bg-inset border-b border-line text-[10px] font-bold uppercase tracking-wider text-muted">
+                    <span>Serie</span><span>Peso</span><span>Ripetizioni</span>
+                </div>
+                <div class="divide-y divide-line/70">${rows}</div>
+            </div>`;
+    }
+    const cells = sets.map((s, i) => {
+        const w = fmtW(s.weight);
+        return `
+            <div class="relative flex-1 shrink-0 min-w-[3.4rem] max-w-[5rem] rounded-xl border text-center py-1 ${isBest(s) ? 'bg-amber-500/10 border-amber-500/30' : 'bg-surface border-line'}">
+                <p class="text-[9px] font-bold uppercase tracking-wider text-muted leading-none">S${i + 1}</p>
+                <p class="text-xs font-mono font-extrabold leading-tight mt-0.5">${w ? `${esc(w)}<span class="text-[9px] text-muted ml-px">kg</span>` : `${esc(s.reps || '—')}<span class="text-[9px] text-muted ml-px">rip</span>`}</p>
+                <p class="text-[11px] font-mono font-bold text-muted leading-none">${w ? `× ${esc(s.reps || '—')}` : '&nbsp;'}</p>
+                ${isBest(s) ? '<i class="fa-solid fa-trophy text-amber-500 text-[8px] absolute top-1 right-1"></i>' : ''}
+            </div>`;
     }).join('');
+    return `<div class="flex gap-1.5 overflow-x-auto no-scrollbar pb-0.5">${cells}</div>`;
 }
 
-/** Riepilogo della pianificazione: compatto se tutte le serie sono uguali, altrimenti serie per serie. */
+/** Riepilogo compatto quando tutte le serie sono uguali: "8 REPS · 80 KG". */
 function planHtml(plan) {
-    if (isUniform(plan)) {
-        const s = plan[0];
-        return `<span class="chip">${esc(s.reps || '—')} <span class="text-muted text-[10px]">REPS</span></span>` +
-            (fmtW(s.weight) ? `<span class="chip !bg-brand/10 !border-brand/20 !text-brand">${esc(fmtW(s.weight))} <span class="text-[10px]">KG</span></span>` : '');
-    }
-    return setPills(plan, { numbered: true });
+    const s = plan[0];
+    return `<span class="chip">${esc(s.reps || '—')} <span class="text-muted text-[10px]">REPS</span></span>` +
+        (fmtW(s.weight) ? `<span class="chip !bg-brand/10 !border-brand/20 !text-brand">${esc(fmtW(s.weight))} <span class="text-[10px]">KG</span></span>` : '');
+}
+
+/** Pianificazione di un esercizio: riga compatta se le serie sono uguali, altrimenti la griglia. */
+function planBlock(plan, setsChip = '') {
+    if (isUniform(plan)) return `<div class="flex flex-wrap items-center gap-1.5">${setsChip}${planHtml(plan)}</div>`;
+    return `${setsChip ? `<div class="mb-1.5">${setsChip}</div>` : ''}${setGrid(plan)}`;
 }
 
 function historyTable(list, dIdx, eIdx, which) {
@@ -711,7 +988,7 @@ function historyTable(list, dIdx, eIdx, which) {
                     ${hasBest ? '<i class="fa-solid fa-trophy text-amber-500 text-[10px]" title="Record"></i>' : ''}
                     <button onclick="deleteLog(${dIdx}, ${eIdx}, ${which}, ${hIdx})" class="w-7 h-7 -mr-1 -my-1 rounded-full text-muted hover:text-rose-500 flex items-center justify-center" aria-label="Elimina log"><i class="fa-solid fa-xmark text-xs"></i></button>
                 </div>
-                <div class="flex flex-wrap gap-1 mt-1">${setPills(sets, { best })}</div>
+                <div class="mt-1.5">${setGrid(sets, { best, compact: true })}</div>
             </div>`;
     }).join('');
 }
@@ -747,14 +1024,14 @@ function renderWorkoutDay() {
             <div class="mt-2 space-y-1.5">
                 <div class="bg-inset border border-line rounded-xl px-3 py-2">
                     <p class="text-xs font-bold text-brand truncate mb-1.5">1 · ${esc(ex.subName1 || ex.name)}</p>
-                    <div class="flex flex-wrap gap-1">${planHtml(ex.plan1)}</div>
+                    ${planBlock(ex.plan1)}
                 </div>
                 <div class="bg-inset border border-line rounded-xl px-3 py-2">
                     <p class="text-xs font-bold text-accent truncate mb-1.5">2 · ${esc(ex.subName2 || ex.name2 || 'Esercizio 2')}</p>
-                    <div class="flex flex-wrap gap-1">${planHtml(ex.plan2)}</div>
+                    ${planBlock(ex.plan2)}
                 </div>
             </div>` : `
-            <div class="mt-2 flex flex-wrap items-center gap-1.5">${setsChip}${planHtml(ex.plan1)}</div>`;
+            <div class="mt-2">${planBlock(ex.plan1, setsChip)}</div>`;
 
         const last1 = ex.history[0];
         const last2 = isSuper ? ex.history2[0] : null;
@@ -762,8 +1039,8 @@ function renderWorkoutDay() {
         const lastHtml = lastRef ? `
             <div class="mt-3">
                 <p class="text-xs text-muted flex items-center gap-1.5"><i class="fa-solid fa-clock-rotate-left"></i> Ultima sessione · ${esc(lastRef.date || '')}</p>
-                ${last1 ? `<div class="flex flex-wrap items-center gap-1 mt-1">${isSuper ? '<span class="text-[10px] font-extrabold text-brand w-3">1</span>' : ''}${setPills(setsOf(last1))}</div>` : ''}
-                ${last2 ? `<div class="flex flex-wrap items-center gap-1 mt-1"><span class="text-[10px] font-extrabold text-accent w-3">2</span>${setPills(setsOf(last2))}</div>` : ''}
+                ${last1 ? `${isSuper ? `<p class="text-[10px] font-extrabold text-brand mt-1.5 mb-1">1 · ${esc(ex.subName1 || ex.name)}</p>` : `<div class="mt-1.5"></div>`}${setGrid(setsOf(last1), { compact: true })}` : ''}
+                ${last2 ? `<p class="text-[10px] font-extrabold text-accent mt-1.5 mb-1">2 · ${esc(ex.subName2 || 'Esercizio 2')}</p>${setGrid(setsOf(last2), { compact: true })}` : ''}
             </div>` : '';
 
         const histHtml = !hasHist ? '' : isSuper ? `
@@ -774,19 +1051,17 @@ function renderWorkoutDay() {
 
         return `
             <article class="card p-4">
-                <div class="flex items-start gap-3">
+                <div class="flex items-center gap-3">
                     <div class="w-9 h-9 rounded-xl ${isSuper ? 'bg-accent/10 text-accent' : 'bg-brand/10 text-brand'} font-extrabold flex items-center justify-center text-sm shrink-0">${eIdx + 1}</div>
-                    <div class="flex-1 min-w-0">
-                        <div class="flex items-center gap-2 flex-wrap">
-                            <h4 class="font-extrabold text-base leading-tight break-words">${esc(ex.name)}</h4>
-                            ${isSuper ? '<span class="text-[9px] font-extrabold uppercase tracking-wider bg-accent text-white px-2 py-0.5 rounded-full">Superset</span>' : ''}
-                        </div>
-                        ${body}
-                        ${ex.desc ? `<p class="text-xs text-muted mt-3 italic border-l-2 border-brand/40 pl-2">${esc(ex.desc)}</p>` : ''}
-                        ${lastHtml}
+                    <div class="flex-1 min-w-0 flex items-center gap-2 flex-wrap">
+                        <h4 class="font-extrabold text-base leading-tight break-words">${esc(ex.name)}</h4>
+                        ${isSuper ? '<span class="text-[9px] font-extrabold uppercase tracking-wider bg-accent text-white px-2 py-0.5 rounded-full">Superset</span>' : ''}
                     </div>
-                    <button onclick="promptEditEx(${eIdx})" class="icon-btn -mr-2 -mt-1" aria-label="Modifica"><i class="fa-solid fa-pen text-xs"></i></button>
+                    <button onclick="promptEditEx(${eIdx})" class="icon-btn -mr-2" aria-label="Modifica"><i class="fa-solid fa-pen text-xs"></i></button>
                 </div>
+                ${body}
+                ${ex.desc ? `<p class="text-xs text-muted mt-3 italic border-l-2 border-brand/40 pl-2">${esc(ex.desc)}</p>` : ''}
+                ${lastHtml}
                 <div class="flex gap-2 mt-4">
                     <button onclick="promptLogSession(${eIdx})" class="flex-1 bg-brand text-white text-sm font-bold py-2.5 rounded-xl active:scale-[0.97] transition shadow-md shadow-brand/20"><i class="fa-solid fa-plus mr-1"></i> Log</button>
                     ${hasHist ? `<button onclick="toggleHistory('${key}')" class="flex-1 btn-soft text-sm py-2.5 !rounded-xl"><i class="fa-solid fa-chart-line"></i> Storico <i class="fa-solid fa-chevron-down text-[10px] transition ${open ? 'rotate-180' : ''}"></i></button>` : ''}
@@ -1075,7 +1350,7 @@ async function deleteLog(dIdx, eIdx, which, hIdx) {
 function renderDietGrid() {
     const today = todayDayIdx();
     $('dietGrid').innerHTML = DAYS.map((day, i) => {
-        const m = dayMacros(i);
+        const n = dayNutrients(i);
         const meals = state.weeklyDiet[day].length;
         const isToday = i === today;
         return `
@@ -1084,11 +1359,9 @@ function renderDietGrid() {
                     <h3 class="font-extrabold text-base">${day}</h3>
                     ${isToday ? '<span class="text-[9px] font-extrabold uppercase tracking-wider bg-emerald-500 text-white px-2 py-0.5 rounded-full">Oggi</span>' : ''}
                 </div>
-                <p class="text-xs text-muted font-semibold mb-3">${meals} ${meals === 1 ? 'pasto' : 'pasti'}</p>
-                <div class="flex gap-1.5 text-[11px] font-extrabold font-mono">
-                    <span class="${MACRO.Carboidrati.bg} ${MACRO.Carboidrati.text} px-1.5 py-0.5 rounded-md">C${fmt(m.Carboidrati, 0)}</span>
-                    <span class="${MACRO.Proteine.bg} ${MACRO.Proteine.text} px-1.5 py-0.5 rounded-md">P${fmt(m.Proteine, 0)}</span>
-                    <span class="${MACRO.Grassi.bg} ${MACRO.Grassi.text} px-1.5 py-0.5 rounded-md">G${fmt(m.Grassi, 0)}</span>
+                <p class="text-xs text-muted font-semibold mb-2">${meals} ${meals === 1 ? 'pasto' : 'pasti'} · <b class="text-ink">${fmt(n.kcal, 0)} kcal</b></p>
+                <div class="flex flex-wrap gap-1 text-[11px] font-extrabold font-mono">
+                    ${NUTR.map(({ k, cat }) => `<span class="${MACRO[cat].bg} ${MACRO[cat].text} px-1.5 py-0.5 rounded-md">${MACRO[cat].short}${fmt(n[k], 0)}</span>`).join('')}
                 </div>
             </button>`;
     }).join('');
@@ -1099,7 +1372,7 @@ function renderDietDay() {
     const day = DAYS[dayIdx];
     const meals = state.weeklyDiet[day];
     $('dietDayTitle').textContent = day;
-    $('dietDayMacros').innerHTML = macroTiles(dayMacros(dayIdx));
+    $('dietDayMacros').innerHTML = nutritionSummary(dayNutrients(dayIdx));
 
     if (!meals.length) {
         $('mealList').innerHTML = `
@@ -1111,18 +1384,18 @@ function renderDietDay() {
     }
 
     $('mealList').innerHTML = meals.map((meal, mIdx) => {
-        const mm = sumMacros([meal]);
+        const mm = sumNutrients([meal]);
         const items = meal.items.map((item, iIdx) => {
-            const mac = itemMacro(item);
-            const cat = mac ? mac.category : item.category;
-            const style = MACRO[cat] || MACRO.Verdure;
-            const note = mac && mac.category !== 'Verdure' ? `<span class="${style.text}">${fmt(mac.grams, 0)}g ${style.short}</span>` : `<span class="text-muted">${esc(cat || '')}</span>`;
+            const food = findFood(item.name);
+            const n = itemNutrients(item);
+            const style = MACRO[food ? food.category : item.category] || MACRO.Verdure;
+            const detail = n ? nutrLine(n) : '<span class="text-muted">Alimento non più presente nel database</span>';
             return `
                 <div class="flex items-center gap-2 py-2 border-b border-line/70 last:border-0">
                     <span class="w-1.5 self-stretch rounded-full ${style.bg.replace('/10', '')} opacity-70"></span>
                     <div class="flex-1 min-w-0">
                         <p class="text-sm font-bold leading-tight break-words">${esc(item.name)}</p>
-                        <p class="text-[11px] font-bold">${note}</p>
+                        <p class="text-[11px] font-bold mt-0.5">${detail}</p>
                     </div>
                     <button onclick="editItemGrams(${mIdx}, ${iIdx})" class="text-xs font-extrabold font-mono text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-2 py-1 rounded-lg active:scale-95 transition">${fmt(item.grams)}g</button>
                     <button onclick="promptSwapFood(${mIdx}, ${iIdx})" class="w-8 h-8 rounded-full text-muted hover:text-accent flex items-center justify-center active:scale-90" aria-label="Sostituisci"><i class="fa-solid fa-arrow-right-arrow-left text-xs"></i></button>
@@ -1135,11 +1408,7 @@ function renderDietDay() {
                 <div class="flex items-start justify-between gap-2 mb-3">
                     <button onclick="renameMeal(${mIdx})" class="text-left min-w-0">
                         <h4 class="font-extrabold text-base leading-tight break-words">${esc(meal.name)} <i class="fa-solid fa-pen text-[10px] text-muted ml-1"></i></h4>
-                        <div class="flex gap-2.5 text-[11px] mt-1 font-extrabold">
-                            <span class="${MACRO.Carboidrati.text}">C ${fmt(mm.Carboidrati, 0)}g</span>
-                            <span class="${MACRO.Proteine.text}">P ${fmt(mm.Proteine, 0)}g</span>
-                            <span class="${MACRO.Grassi.text}">G ${fmt(mm.Grassi, 0)}g</span>
-                        </div>
+                        <p class="text-[11px] mt-1 font-extrabold">${nutrLine(mm)}</p>
                     </button>
                     <div class="flex gap-1.5 shrink-0">
                         <button onclick="promptAddItem(${mIdx})" class="w-9 h-9 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-500 flex items-center justify-center active:scale-90 transition" aria-label="Aggiungi alimento"><i class="fa-solid fa-plus text-sm"></i></button>
@@ -1317,7 +1586,7 @@ function renderPickerList() {
             <button type="button" onclick="pickFood(${i})" class="w-full flex items-center gap-2 px-3 py-2.5 rounded-xl text-left transition ${sel ? 'bg-emerald-500/15 ring-1 ring-emerald-500/40' : 'hover:bg-surface'}">
                 <span class="w-2 h-2 rounded-full shrink-0 ${s.text.replace('text-', 'bg-')}"></span>
                 <span class="flex-1 min-w-0 text-sm font-semibold truncate">${esc(f.name)}</span>
-                <span class="text-[11px] font-bold ${s.text} shrink-0">${f.category === 'Verdure' ? 'libera' : fmt(f.macroValue) + 'g ' + s.short}</span>
+                <span class="text-[11px] font-bold text-muted shrink-0">${fmt(nutrientsOf(f, 100).kcal, 0)} kcal</span>
                 ${sel ? '<i class="fa-solid fa-circle-check text-emerald-500"></i>' : ''}
             </button>`;
     }).join('') || '<p class="text-sm text-muted text-center py-6">Nessun alimento trovato.</p>';
@@ -1340,10 +1609,9 @@ function updatePickerPreview() {
     sel.classList.toggle('text-muted', !f);
     const g = parseNum($('pickerGrams').value);
     const p = $('pickerPreview');
-    if (f && g > 0 && f.category !== 'Verdure') {
-        const s = MACRO[f.category];
-        p.innerHTML = `≈ <span class="${s.text}">${fmt((f.macroValue * g) / 100)}g di ${s.label.toLowerCase()}</span>`;
-    } else p.textContent = '';
+    if (f && g > 0) p.innerHTML = nutrLine(nutrientsOf(f, g));
+    else if (f) p.innerHTML = `<span class="text-muted">Per 100 g:</span> ${nutrLine(nutrientsOf(f, 100))}`;
+    else p.textContent = '';
 }
 
 async function confirmAddDietItem() {
@@ -1357,28 +1625,71 @@ async function confirmAddDietItem() {
     render();
 }
 
+// ---- Equivalenze tra alimenti (sostituzioni e convertitore) ----
+/**
+ * Alternative con la stessa quantità del macro principale (es. stesse proteine),
+ * con tutti i valori e la differenza rispetto all'alimento di partenza.
+ */
+function equivalents(src, grams) {
+    const key = MAIN_MACRO_KEY[src.category];
+    const target = (src[key] * grams) / 100;
+    const base = nutrientsOf(src, grams);
+    return allFoods()
+        .filter((f) => f.category === src.category && f.name !== src.name && f[key] > 0)
+        .map((f) => {
+            const g = Math.max(1, Math.round((target * 100) / f[key]));
+            const n = nutrientsOf(f, g);
+            return { name: f.name, grams: g, n, d: { c: n.c - base.c, p: n.p - base.p, f: n.f - base.f, kcal: n.kcal - base.kcal } };
+        })
+        .sort((a, b) => a.name.localeCompare(b.name, 'it'));
+}
+
+function signed(v, digits = 1) {
+    if (Math.abs(v) < (digits ? 0.5 : 1)) return '=';
+    return `${v > 0 ? '+' : '−'}${fmt(Math.abs(v), digits)}`;
+}
+
+/** Riga di un'alternativa: nome, grammi, valori completi e differenze. */
+function equivRowHtml(a, onclick) {
+    const diff = NUTR.map(({ k, cat }) => `<span class="${MACRO[cat].text}">${MACRO[cat].short} ${signed(a.d[k])}</span>`).join(' ') +
+        ` <span class="${a.d.kcal > 1 ? 'text-rose-500' : a.d.kcal < -1 ? 'text-emerald-500' : 'text-muted'}">${signed(a.d.kcal, 0)} kcal</span>`;
+    const tag = onclick ? 'button' : 'div';
+    return `
+        <${tag} ${onclick ? `onclick="${onclick}"` : ''} class="w-full text-left bg-inset border border-line px-3 py-2.5 rounded-xl ${onclick ? 'active:scale-[0.98] transition hover:border-accent/40' : ''}">
+            <div class="flex justify-between items-center gap-2">
+                <span class="font-bold text-sm">${esc(a.name)}</span>
+                <span class="text-accent font-extrabold font-mono bg-accent/10 px-2.5 py-1 rounded-lg shrink-0">${fmt(a.grams, 0)}g</span>
+            </div>
+            <p class="text-[11px] font-bold mt-1">${nutrLine(a.n)}</p>
+            <p class="text-[11px] font-bold mt-0.5 text-muted">Differenza: ${diff}</p>
+        </${tag}>`;
+}
+
+function sourceBoxHtml(label, food, grams) {
+    const s = MACRO[food.category];
+    return `
+        <div class="${s.bg} border ${s.border} p-4 rounded-2xl text-center">
+            <p class="text-[10px] uppercase font-bold tracking-wider text-muted mb-1">${label}</p>
+            <p class="text-lg font-extrabold leading-tight">${fmt(grams)}g di ${esc(food.name)}</p>
+            <p class="text-xs mt-1.5 font-bold">${nutrLine(nutrientsOf(food, grams))}</p>
+            <p class="text-[11px] mt-1 text-muted font-semibold">Le alternative hanno gli stessi grammi di <b class="${s.text}">${s.label.toLowerCase()}</b></p>
+        </div>`;
+}
+
 // ---- Sostituzione alimento ----
-const swap = { mIdx: null, iIdx: null, totalMacro: 0, alts: [] };
+const swap = { mIdx: null, iIdx: null, alts: [] };
 
 function promptSwapFood(mIdx, iIdx) {
     const item = currentMeals()[mIdx].items[iIdx];
     const src = findFood(item.name);
-    if (!src || !(src.macroValue > 0)) {
-        alertDialog('Nessuna alternativa', 'Le verdure e gli alimenti senza macro principale si gestiscono liberamente.', 'fa-leaf');
+    if (!src || !MAIN_MACRO_KEY[src.category] || !(src[MAIN_MACRO_KEY[src.category]] > 0)) {
+        alertDialog('Nessuna alternativa', 'Le verdure si gestiscono liberamente: non hanno un macro principale da pareggiare.', 'fa-leaf');
         return;
     }
     swap.mIdx = mIdx;
     swap.iIdx = iIdx;
-    swap.totalMacro = (src.macroValue / 100) * item.grams;
-    swap.alts = allFoods()
-        .filter((f) => f.category === src.category && f.name !== src.name && f.macroValue > 0)
-        .map((f) => ({ name: f.name, grams: (swap.totalMacro * 100) / f.macroValue }))
-        .sort((a, b) => a.name.localeCompare(b.name, 'it'));
-    const s = MACRO[src.category];
-    $('swapInfo').innerHTML = `
-        <p class="text-[10px] uppercase font-bold tracking-wider text-accent mb-1">Stai sostituendo</p>
-        <p class="text-lg font-extrabold leading-tight">${fmt(item.grams)}g di ${esc(item.name)}</p>
-        <p class="text-xs mt-1 font-bold ${s.text}">${fmt(swap.totalMacro)}g di ${s.label.toLowerCase()}</p>`;
+    swap.alts = equivalents(src, item.grams);
+    $('swapInfo').innerHTML = sourceBoxHtml('Stai sostituendo', src, item.grams);
     $('swapSearch').value = '';
     renderSwapList();
     openModal('swapModal');
@@ -1386,18 +1697,15 @@ function promptSwapFood(mIdx, iIdx) {
 
 function renderSwapList() {
     const q = $('swapSearch').value.trim().toLowerCase();
-    $('swapList').innerHTML = swap.alts.map((a, i) => (q && !a.name.toLowerCase().includes(q)) ? '' : `
-        <button onclick="confirmSwapFood(${i})" class="w-full flex justify-between items-center gap-2 bg-inset border border-line p-3 rounded-xl active:scale-[0.98] transition hover:border-accent/40">
-            <span class="font-bold text-sm text-left">${esc(a.name)}</span>
-            <span class="text-accent font-extrabold font-mono bg-accent/10 px-2.5 py-1 rounded-lg shrink-0">${fmt(Math.round(a.grams), 0)}g</span>
-        </button>`).join('') || '<p class="text-sm text-muted text-center py-4">Nessuna alternativa trovata.</p>';
+    $('swapList').innerHTML = swap.alts.map((a, i) => (q && !a.name.toLowerCase().includes(q)) ? '' : equivRowHtml(a, `confirmSwapFood(${i})`)).join('') ||
+        '<p class="text-sm text-muted text-center py-4">Nessuna alternativa trovata.</p>';
 }
 
 async function confirmSwapFood(i) {
     const a = swap.alts[i];
     const f = a && findFood(a.name);
     if (!f) return;
-    currentMeals()[swap.mIdx].items[swap.iIdx] = { name: f.name, category: f.category, grams: Math.round(a.grams) };
+    currentMeals()[swap.mIdx].items[swap.iIdx] = { name: f.name, category: f.category, grams: a.grams };
     persist();
     await closeModal('swapModal');
     toast('Alimento sostituito');
@@ -1407,6 +1715,7 @@ async function confirmSwapFood(i) {
 // ================= CONVERSIONI / DB =================
 let smartCat = '';
 let smartFoods = [];
+const smart = { alts: [], open: true };
 
 function setSmartCat(cat) {
     smartCat = cat;
@@ -1417,7 +1726,8 @@ function setSmartCat(cat) {
 function updateSmartDropdown() {
     const sel = $('smartFood');
     const prev = sel.value !== '' ? smartFoods[sel.value]?.name : null;
-    smartFoods = allFoods().filter((f) => f.category === smartCat && f.macroValue > 0).sort((a, b) => a.name.localeCompare(b.name, 'it'));
+    const key = MAIN_MACRO_KEY[smartCat];
+    smartFoods = allFoods().filter((f) => f.category === smartCat && f[key] > 0).sort((a, b) => a.name.localeCompare(b.name, 'it'));
     sel.disabled = !smartCat;
     sel.innerHTML = `<option value="">${smartCat ? 'Alimento di partenza' : 'Scegli prima il macro'}</option>` +
         smartFoods.map((f, i) => `<option value="${i}" ${f.name === prev ? 'selected' : ''}>${esc(f.name)}</option>`).join('');
@@ -1431,21 +1741,44 @@ function findAlternatives() {
     if (!(grams > 0)) { shake($('smartGrams')); return; }
 
     const src = smartFoods[idx];
-    const total = (src.macroValue / 100) * grams;
-    const s = MACRO[smartCat];
-    const rows = smartFoods.filter((f) => f !== src).map((f) => `
-        <div class="flex justify-between items-center gap-2 bg-inset border border-line px-3 py-2.5 rounded-xl">
-            <span class="font-semibold text-sm">${esc(f.name)}</span>
-            <span class="text-accent font-extrabold font-mono bg-accent/10 px-2.5 py-1 rounded-lg shrink-0">${fmt(Math.round((total * 100) / f.macroValue), 0)}g</span>
-        </div>`).join('');
-    const res = $('smartResult');
-    res.innerHTML = `
-        <div class="${s.bg} border ${s.border} p-4 rounded-2xl mb-3 text-center">
-            <p class="text-[10px] font-bold uppercase tracking-wider text-muted mb-1">${fmt(grams)}g di ${esc(src.name)} =</p>
-            <p class="text-2xl font-extrabold ${s.text}">${fmt(total)}g <span class="text-sm font-bold">di ${s.label.toLowerCase()}</span></p>
+    smart.alts = equivalents(src, grams);
+    smart.open = true;
+    $('smartResult').innerHTML = `
+        ${sourceBoxHtml('Punto di partenza', src, grams)}
+        <div class="flex items-center gap-2 mt-3 mb-2">
+            <div id="smartFilterBox" class="relative flex-1 min-w-0">
+                <i class="fa-solid fa-magnifying-glass absolute left-3.5 top-1/2 -translate-y-1/2 text-muted text-xs"></i>
+                <input type="search" id="smartFilter" placeholder="Filtra per prodotto…" autocomplete="off" class="field !py-2.5 !pl-9 !text-sm" oninput="renderSmartList()">
+            </div>
+            <button type="button" id="smartToggle" onclick="toggleSmartList()" class="btn-soft px-3.5 py-2.5 text-sm shrink-0"></button>
         </div>
-        <div class="space-y-1.5">${rows}</div>`;
-    res.classList.remove('hidden');
+        <div id="smartListBox" class="max-h-[60dvh] overflow-y-auto no-scrollbar rounded-2xl">
+            <div id="smartList" class="space-y-1.5"></div>
+        </div>`;
+    $('smartResult').classList.remove('hidden');
+    renderSmartList();
+}
+
+function renderSmartList() {
+    const q = ($('smartFilter')?.value || '').trim().toLowerCase();
+    const shown = smart.alts.filter((a) => !q || a.name.toLowerCase().includes(q));
+    $('smartList').innerHTML = shown.map((a) => equivRowHtml(a)).join('') ||
+        '<p class="text-sm text-muted text-center py-4">Nessun prodotto corrisponde al filtro.</p>';
+    updateSmartToggle();
+}
+
+function updateSmartToggle() {
+    $('smartListBox').classList.toggle('hidden', !smart.open);
+    $('smartFilterBox').classList.toggle('invisible', !smart.open);
+    $('smartToggle').innerHTML = smart.open
+        ? '<i class="fa-solid fa-chevron-up"></i> Chiudi lista'
+        : `<i class="fa-solid fa-chevron-down"></i> Mostra ${smart.alts.length} alternative`;
+}
+
+function toggleSmartList() {
+    smart.open = !smart.open;
+    updateSmartToggle();
+    if (!smart.open) $('smartResult').scrollIntoView({ block: 'nearest', behavior: 'smooth' });
 }
 
 function renderDb() {
@@ -1458,21 +1791,64 @@ function renderDb() {
     list.innerHTML = state.foodDb.map((f, i) => {
         const s = MACRO[f.category] || MACRO.Verdure;
         return `
-            <div class="flex items-center gap-3 bg-inset border border-line p-3 rounded-2xl">
+            <button onclick="promptEditFood(${i})" class="w-full text-left flex items-center gap-3 bg-inset border border-line p-3 rounded-2xl active:scale-[0.99] transition">
                 <span class="w-9 h-9 rounded-xl ${s.bg} ${s.text} font-extrabold text-sm flex items-center justify-center shrink-0">${s.short}</span>
                 <div class="flex-1 min-w-0">
                     <p class="font-bold text-sm truncate">${esc(f.name)}</p>
-                    <p class="text-xs text-muted font-semibold">${f.category === 'Verdure' ? 'Verdura libera' : `${fmt(f.macroValue)}g ${s.label.toLowerCase()} / 100g`}</p>
+                    <p class="text-[11px] font-bold">${nutrLine(nutrientsOf(f, 100))} <span class="text-muted font-semibold">/100g</span></p>
+                    ${f.partial ? '<p class="text-[11px] font-bold text-amber-500 mt-0.5"><i class="fa-solid fa-triangle-exclamation mr-1"></i>Completa carboidrati, proteine e grassi</p>' : ''}
                 </div>
-                <button onclick="deleteDbFood(${i})" class="w-9 h-9 rounded-full text-muted hover:text-rose-500 flex items-center justify-center" aria-label="Elimina"><i class="fa-solid fa-trash-can text-sm"></i></button>
-            </div>`;
+                <i class="fa-solid fa-pen text-xs text-muted"></i>
+            </button>`;
     }).join('');
 }
 
+// ---- Alimento personale: nuovo / modifica ----
+let editingFood = null; // indice in state.foodDb, null = nuovo
+let foodCatTouched = false;
+
+function suggestFoodCategory(c, p, f) {
+    const vals = { Carboidrati: c || 0, Proteine: p || 0, Grassi: f || 0 };
+    const best = Object.keys(vals).reduce((a, k) => (vals[k] > vals[a] ? k : a), 'Carboidrati');
+    return vals[best] < 5 ? 'Verdure' : best;
+}
+
+function readFoodForm() {
+    const num = (id) => parseNum($(id).value);
+    return { c: num('dbFoodC'), p: num('dbFoodP'), f: num('dbFoodF') };
+}
+
+function updateFoodFormPreview() {
+    const v = readFoodForm();
+    const n = { c: v.c || 0, p: v.p || 0, f: v.f || 0 };
+    if (!foodCatTouched && [v.c, v.p, v.f].some(Number.isFinite)) $('dbFoodCat').value = suggestFoodCategory(n.c, n.p, n.f);
+    $('dbFoodKcal').textContent = `${fmt(kcalOf(n), 0)} kcal per 100 g`;
+}
+
+function fillFoodForm(f) {
+    $('dbFoodName').value = f ? f.name : '';
+    const val = (v) => (f && !(f.partial && !v) ? String(v).replace('.', ',') : '');
+    $('dbFoodC').value = val(f && f.c);
+    $('dbFoodP').value = val(f && f.p);
+    $('dbFoodF').value = val(f && f.f);
+    $('dbFoodCat').value = f ? f.category : (smartCat || 'Carboidrati');
+    foodCatTouched = !!f;
+    updateFoodFormPreview();
+}
+
 function promptAddFood() {
-    $('dbFoodName').value = '';
-    $('dbFoodMacro').value = '';
-    $('dbFoodCat').value = smartCat || 'Carboidrati';
+    editingFood = null;
+    $('addFoodTitle').textContent = 'Nuovo alimento';
+    $('dbFoodDelete').classList.add('hidden');
+    fillFoodForm(null);
+    openModal('addFoodModal');
+}
+
+function promptEditFood(i) {
+    editingFood = i;
+    $('addFoodTitle').textContent = 'Modifica alimento';
+    $('dbFoodDelete').classList.remove('hidden');
+    fillFoodForm(state.foodDb[i]);
     openModal('addFoodModal');
 }
 
@@ -1480,30 +1856,44 @@ async function saveDbFood() {
     const nameEl = $('dbFoodName');
     const name = nameEl.value.trim();
     const category = $('dbFoodCat').value;
-    let macroValue = parseNum($('dbFoodMacro').value);
+    const v = readFoodForm();
     if (!name) { shake(nameEl); return; }
-    if (category === 'Verdure') macroValue = 0;
-    else if (!(macroValue > 0) || macroValue > 100) { shake($('dbFoodMacro')); return; }
-    if (findFood(name) || [...foodIndex.keys()].some((k) => k.toLowerCase() === name.toLowerCase())) {
-        toast('Esiste già un alimento con questo nome', 'fa-triangle-exclamation');
-        shake(nameEl);
-        return;
+    for (const [k, id] of [['c', 'dbFoodC'], ['p', 'dbFoodP'], ['f', 'dbFoodF']]) {
+        if ($(id).value.trim() === '') v[k] = 0;
+        else if (!(v[k] >= 0) || v[k] > 100) { shake($(id)); return; }
     }
-    state.foodDb.push({ id: Date.now().toString(36), name, category, macroValue });
+    if (v.c + v.p + v.f > 100.5) { toast('La somma dei macro supera 100 g', 'fa-triangle-exclamation'); shake($('dbFoodC')); return; }
+    const key = MAIN_MACRO_KEY[category];
+    if (key && !(v[key] > 0)) { toast(`Inserisci i grammi di ${MACRO[category].label.toLowerCase()}`, 'fa-triangle-exclamation'); shake($(`dbFood${key.toUpperCase()}`)); return; }
+    const old = editingFood !== null ? state.foodDb[editingFood] : null;
+    const clash = [...foodIndex.keys()].some((k) => k.toLowerCase() === name.toLowerCase() && (!old || k !== old.name));
+    if (clash) { toast('Esiste già un alimento con questo nome', 'fa-triangle-exclamation'); shake(nameEl); return; }
+
+    const food = { id: old ? old.id : Date.now().toString(36), name, category, c: v.c, p: v.p, f: v.f, macroValue: key ? v[key] : 0 };
+    if (old) {
+        state.foodDb[editingFood] = food;
+        // i pasti fanno riferimento al nome: se cambia, aggiorna anche quelli
+        if (old.name !== name) DAYS.forEach((d) => state.weeklyDiet[d].forEach((m) => m.items.forEach((it) => { if (it.name === old.name) it.name = name; })));
+    } else {
+        state.foodDb.push(food);
+    }
+    DAYS.forEach((d) => state.weeklyDiet[d].forEach((m) => m.items.forEach((it) => { if (it.name === name) it.category = category; })));
     rebuildFoodIndex();
     persist();
     await closeModal('addFoodModal');
-    toast('Alimento salvato');
+    toast(old ? 'Alimento aggiornato' : 'Alimento salvato');
     render();
 }
 
-async function deleteDbFood(i) {
-    const f = state.foodDb[i];
+async function deleteDbFood() {
+    const f = state.foodDb[editingFood];
     if (!f) return;
-    if (!(await confirmDialog('Eliminare l\'alimento?', `"${f.name}" verrà rimosso dal tuo database. Nei pasti in cui è usato non verranno più calcolati i macro.`))) return;
+    if (!(await confirmDialog('Eliminare l\'alimento?', `"${f.name}" verrà rimosso dal tuo database. Nei pasti in cui è usato non verranno più calcolati i valori.`))) return;
     state.foodDb = state.foodDb.filter((x) => x !== f);
     rebuildFoodIndex();
-    persist(); render();
+    persist();
+    await closeModal('addFoodModal');
+    render();
 }
 
 // ================= IMPOSTAZIONI / BACKUP =================
@@ -1537,14 +1927,14 @@ function handleImport(e) {
     reader.onload = async (ev) => {
         let json;
         try { json = JSON.parse(ev.target.result); } catch (err) { json = null; }
-        if (!json || typeof json !== 'object' || !(json.weeklyDiet || json.workouts || json.foodDb)) {
+        if (!json || typeof json !== 'object' || !(json.weeklyDiet || json.workouts || json.foodDb || json.weights)) {
             alertDialog('File non valido', 'Il file selezionato non è un backup di Workout.', 'fa-triangle-exclamation');
             return;
         }
         const data = normalizeData(json);
         const ok = await dialog({
             title: 'Importare il backup?',
-            text: `${data.workouts.length} ${data.workouts.length === 1 ? 'scheda' : 'schede'} e ${data.foodDb.length} ${data.foodDb.length === 1 ? 'alimento personale' : 'alimenti personali'}. I dati attuali su questo dispositivo verranno sostituiti.`,
+            text: `${data.workouts.length} ${data.workouts.length === 1 ? 'scheda' : 'schede'}, ${data.foodDb.length} ${data.foodDb.length === 1 ? 'alimento personale' : 'alimenti personali'} e ${data.weights.length} ${data.weights.length === 1 ? 'pesata' : 'pesate'}. I dati attuali su questo dispositivo verranno sostituiti.`,
             confirm: 'Importa', cancel: 'Annulla', icon: 'fa-upload'
         });
         if (!ok) return;
@@ -1560,30 +1950,148 @@ function handleImport(e) {
 }
 
 // ================= TIMER =================
-const T = { mode: 'free', running: false, phase: 'idle', set: 0, sets: 0, cfg: null, endAt: 0, dur: 0, remaining: 0, startAt: 0, elapsed: 0, lastBeepSec: null, interval: null, wakeLock: null };
+const T = { mode: 'free', running: false, phase: 'idle', set: 0, sets: 0, cfg: null, endAt: 0, dur: 0, remaining: 0, startAt: 0, elapsed: 0, lastBeepSec: null, lastMinute: 0, warned: false, interval: null, wakeLock: null };
+
+// ---- Suoni ----
+// Catena audio: oscillatori → compressore (limita i picchi, così si può alzare molto il volume) → volume generale.
 let audioCtx = null;
+let masterGain = null;
 
 function unlockAudio() {
     try {
-        if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        if (!audioCtx) {
+            audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            const comp = audioCtx.createDynamicsCompressor();
+            comp.threshold.value = -12;
+            comp.knee.value = 6;
+            comp.ratio.value = 12;
+            comp.attack.value = 0.002;
+            comp.release.value = 0.1;
+            masterGain = audioCtx.createGain();
+            comp.connect(masterGain).connect(audioCtx.destination);
+            audioCtx.compIn = comp;
+        }
         if (audioCtx.state === 'suspended') audioCtx.resume();
+        applyVolume();
     } catch (e) { audioCtx = null; }
+    unlockVoice();
 }
 
-function beep(freq = 880, dur = 0.15, vol = 0.6) {
-    if (!audioCtx) return;
+/** Volume 0–100 → guadagno fino a 2.5 (il compressore evita la distorsione). */
+function applyVolume() {
+    if (masterGain) masterGain.gain.value = (settings.volume / 100) * 2.5;
+}
+
+/** Beep deciso: onda quadra + sinusoide all'ottava, con attacco rapido. */
+function beep(freq = 880, dur = 0.15, level = 1) {
+    if (!audioCtx || !settings.sound || settings.volume <= 0) return;
     try {
         const t0 = audioCtx.currentTime;
-        const osc = audioCtx.createOscillator();
         const g = audioCtx.createGain();
-        osc.type = 'sine';
-        osc.frequency.value = freq;
-        g.gain.setValueAtTime(vol, t0);
-        g.gain.exponentialRampToValueAtTime(0.001, t0 + dur);
-        osc.connect(g).connect(audioCtx.destination);
-        osc.start(t0);
-        osc.stop(t0 + dur + 0.02);
+        g.gain.setValueAtTime(0.0001, t0);
+        g.gain.exponentialRampToValueAtTime(0.9 * level, t0 + 0.006);
+        g.gain.setValueAtTime(0.9 * level, t0 + Math.max(0.01, dur - 0.05));
+        g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+        g.connect(audioCtx.compIn);
+        [['square', freq, 0.55], ['sine', freq * 2, 0.45]].forEach(([type, f, v]) => {
+            const o = audioCtx.createOscillator();
+            const og = audioCtx.createGain();
+            o.type = type;
+            o.frequency.value = f;
+            og.gain.value = v;
+            o.connect(og).connect(g);
+            o.start(t0);
+            o.stop(t0 + dur + 0.02);
+        });
     } catch (e) { /* audio non disponibile */ }
+}
+
+// ---- Voce ----
+let itVoice = null;
+function pickVoice() {
+    if (!('speechSynthesis' in window)) return;
+    const voices = speechSynthesis.getVoices();
+    itVoice = voices.find((v) => /^it[-_]IT/i.test(v.lang) && /google|natural|premium|enhanced/i.test(v.name)) ||
+        voices.find((v) => /^it/i.test(v.lang)) || null;
+}
+if ('speechSynthesis' in window) {
+    pickVoice();
+    speechSynthesis.addEventListener?.('voiceschanged', pickVoice);
+}
+
+let voiceUnlocked = false;
+function unlockVoice() {
+    // iPhone: la sintesi vocale parte solo se attivata da un tocco dell'utente
+    if (voiceUnlocked || !('speechSynthesis' in window)) return;
+    voiceUnlocked = true;
+    try { const u = new SpeechSynthesisUtterance(''); u.volume = 0; speechSynthesis.speak(u); } catch (e) { /* ignora */ }
+}
+
+function speak(text, { interrupt = true, delay = 0 } = {}) {
+    if (!settings.voice || !('speechSynthesis' in window)) return;
+    const go = () => {
+        try {
+            if (interrupt) speechSynthesis.cancel();
+            const u = new SpeechSynthesisUtterance(text);
+            u.lang = 'it-IT';
+            if (itVoice) u.voice = itVoice;
+            u.rate = 1.05;
+            u.volume = Math.min(1, Math.max(0.2, settings.volume / 100));
+            speechSynthesis.speak(u);
+        } catch (e) { /* voce non disponibile */ }
+    };
+    if (delay) setTimeout(go, delay); else go();
+}
+
+const COUNT_WORDS = { 1: 'Uno', 2: 'Due', 3: 'Tre' };
+const durWords = (s) => {
+    const m = Math.floor(s / 60), r = s % 60;
+    if (!m) return `${r} secondi`;
+    return `${m} ${m === 1 ? 'minuto' : 'minuti'}${r ? ` e ${r}` : ''}`;
+};
+
+// ---- Controlli audio (pannello del timer) ----
+function renderAudioControls() {
+    const on = 'bg-brand text-white shadow-md shadow-brand/25';
+    const off = 'bg-surface border border-line text-muted';
+    const sBtn = $('tSoundBtn');
+    sBtn.className = `w-10 h-10 rounded-xl flex items-center justify-center shrink-0 active:scale-90 transition ${settings.sound ? on : off}`;
+    sBtn.innerHTML = `<i class="fa-solid ${settings.sound ? 'fa-volume-high' : 'fa-volume-xmark'}"></i>`;
+    const vBtn = $('tVoiceBtn');
+    vBtn.className = `w-10 h-10 rounded-xl flex items-center justify-center shrink-0 active:scale-90 transition ${settings.voice ? on : off}`;
+    vBtn.innerHTML = `<i class="fa-solid ${settings.voice ? 'fa-microphone' : 'fa-microphone-slash'}"></i>`;
+    $('tVolume').value = settings.volume;
+    $('tVolumeLabel').textContent = `${settings.volume}%`;
+    $('tVoiceHint').textContent = !('speechSynthesis' in window)
+        ? 'Non supportata da questo browser'
+        : settings.voice ? 'Conto alla rovescia e annuncio di ogni fase' : 'Disattivata';
+}
+
+function toggleTimerSound() {
+    settings.sound = !settings.sound;
+    saveSettings();
+    renderAudioControls();
+    if (settings.sound) testTimerSound();
+}
+
+function toggleTimerVoice() {
+    settings.voice = !settings.voice;
+    saveSettings();
+    renderAudioControls();
+    unlockAudio();
+    if (settings.voice) speak('Voce attivata');
+}
+
+function setTimerVolume(v) {
+    settings.volume = Math.max(0, Math.min(100, parseInt(v, 10) || 0));
+    saveSettings();
+    applyVolume();
+    $('tVolumeLabel').textContent = `${settings.volume}%`;
+}
+
+function testTimerSound() {
+    unlockAudio();
+    beep(1046, 0.25);
 }
 
 const vibrate = (p) => { try { navigator.vibrate && navigator.vibrate(p); } catch (e) { /* ignora */ } };
@@ -1650,9 +2158,15 @@ function startPhase(phase, secs, from) {
     T.dur = secs * 1000;
     T.endAt = from + T.dur;
     T.lastBeepSec = null;
+    T.warned = false;
     const late = Date.now() - from > 1500; // transizione recuperata dopo il background: niente suoni in ritardo
-    if (!late) {
-        if (phase === 'work') { beep(1046, 0.25); vibrate(200); } else { beep(523, 0.5); vibrate([100, 80, 100]); }
+    if (late) return;
+    if (phase === 'work') {
+        beep(1046, 0.35); vibrate(200);
+        speak(T.set === 1 && T.sets > 1 ? `Si parte! Serie 1 di ${T.sets}` : T.set === T.sets && T.sets > 1 ? 'Ultima serie, via!' : `Serie ${T.set} di ${T.sets}, via!`, { delay: 250 });
+    } else {
+        beep(523, 0.6); vibrate([100, 80, 100]);
+        speak(`Recupero, ${durWords(secs)}`, { delay: 350 });
     }
 }
 
@@ -1672,8 +2186,9 @@ function finishTimer() {
     T.running = false;
     T.phase = 'done';
     releaseWakeLock();
-    beep(784, 0.2); setTimeout(() => beep(988, 0.2), 220); setTimeout(() => beep(1318, 0.45), 440);
+    beep(784, 0.22); setTimeout(() => beep(988, 0.22), 240); setTimeout(() => beep(1318, 0.6), 480);
     vibrate([200, 100, 200, 100, 400]);
+    speak('Allenamento completato, ottimo lavoro!', { delay: 1100 });
     updateTimerUI();
 }
 
@@ -1684,7 +2199,25 @@ function timerTick() {
         while (T.running && now >= T.endAt) advancePhase(T.endAt);
         if (!T.running) return;
         const secLeft = Math.ceil((T.endAt - now) / 1000);
-        if (secLeft <= 3 && secLeft >= 1 && T.lastBeepSec !== secLeft) { T.lastBeepSec = secLeft; beep(660, 0.08, 0.4); }
+        // avviso che la fase sta per finire (solo se c'è tempo di dirlo prima del conto alla rovescia)
+        if (!T.warned && secLeft === 5 && T.dur >= 9000) {
+            T.warned = true;
+            const lastWork = T.phase === 'work' && T.set >= T.sets;
+            speak(T.phase === 'work' ? (lastWork ? 'Ultimi secondi, stai finendo!' : 'Sta finendo la serie') : 'Sta finendo il recupero, preparati');
+        }
+        if (secLeft <= 3 && secLeft >= 1 && T.lastBeepSec !== secLeft) {
+            T.lastBeepSec = secLeft;
+            beep(660, 0.12, 0.8);
+            speak(COUNT_WORDS[secLeft]);
+        }
+    } else {
+        // cronometro libero: segnale a ogni minuto intero
+        const min = Math.floor((now - T.startAt) / 60000);
+        if (min > T.lastMinute) {
+            T.lastMinute = min;
+            beep(880, 0.18); setTimeout(() => beep(880, 0.18), 260);
+            speak(min === 1 ? 'Un minuto' : `${min} minuti`, { delay: 550 });
+        }
     }
     updateTimerUI();
 }
@@ -1697,12 +2230,14 @@ function toggleTimer() {
         if (T.mode === 'free') T.elapsed = (Date.now() - T.startAt) / 1000;
         else T.remaining = T.endAt - Date.now();
         releaseWakeLock();
+        if ('speechSynthesis' in window) speechSynthesis.cancel();
         updateTimerUI();
         return;
     }
     const now = Date.now();
     if (T.mode === 'free') {
         T.startAt = now - T.elapsed * 1000;
+        T.lastMinute = Math.floor(T.elapsed / 60);
     } else if (T.phase === 'idle' || T.phase === 'done') {
         T.cfg = readTimerCfg();
         if (T.cfg.work <= 0) {
@@ -1726,8 +2261,9 @@ function toggleTimer() {
 
 function resetTimer() {
     clearInterval(T.interval);
-    Object.assign(T, { running: false, phase: 'idle', set: 0, elapsed: 0, remaining: 0, startAt: 0, endAt: 0 });
+    Object.assign(T, { running: false, phase: 'idle', set: 0, elapsed: 0, remaining: 0, startAt: 0, endAt: 0, lastMinute: 0, warned: false });
     releaseWakeLock();
+    if ('speechSynthesis' in window) speechSynthesis.cancel();
     updateTimerUI();
 }
 
@@ -1873,6 +2409,7 @@ function refreshInstallUI() {
 loadData();
 applyTheme();
 fillTimerCfg();
+renderAudioControls();
 setTimerMode(settings.timerMode === 'interval' ? 'interval' : 'free');
 
 (function boot() {

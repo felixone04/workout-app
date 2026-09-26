@@ -233,10 +233,52 @@
                 <p class="text-xs font-bold uppercase tracking-widest text-emerald-500">Dieta</p>
                 <h2 id="dietDayTitle" class="text-3xl font-extrabold tracking-tight"></h2>
             </div>
-            <div id="dietDayMacros" class="grid grid-cols-3 gap-2 mb-3"></div>
+            <div id="dietDayMacros" class="card p-3 mb-3"></div>
             <button onclick="promptCopyDay()" class="btn-soft w-full py-3 text-sm mb-5"><i class="fa-solid fa-copy text-emerald-500"></i> Copia questo giorno su altri giorni</button>
             <div id="mealList" class="space-y-3"></div>
             <button onclick="addMeal()" class="mt-3 w-full border-2 border-dashed border-line text-muted hover:text-ink hover:border-muted/50 transition py-4 rounded-3xl text-sm font-bold"><i class="fa-solid fa-plus mr-2"></i>Aggiungi pasto</button>
+        </section>
+
+        <!-- PESO CORPOREO -->
+        <section id="view-weight" class="view hidden">
+            <div class="mb-4">
+                <p class="text-xs font-bold uppercase tracking-widest text-accent">Corpo</p>
+                <h2 class="text-3xl font-extrabold tracking-tight">Peso corporeo</h2>
+            </div>
+            <form class="card p-4 mb-4" onsubmit="event.preventDefault(); saveWeight()">
+                <p class="field-label">Nuova pesata</p>
+                <div class="flex gap-2">
+                    <input type="date" id="weightDate" class="field flex-1 min-w-0" aria-label="Data">
+                    <div class="relative w-32 shrink-0">
+                        <input type="text" inputmode="decimal" id="weightKg" placeholder="75,0" class="field text-center !pr-9 !text-lg" aria-label="Peso in kg">
+                        <span class="absolute right-3 top-1/2 -translate-y-1/2 text-muted text-sm font-bold pointer-events-none">kg</span>
+                    </div>
+                </div>
+                <button type="submit" class="btn-primary mt-3"><i class="fa-solid fa-check"></i> Salva peso</button>
+            </form>
+            <div id="weightStats" class="grid grid-cols-3 gap-2 mb-4"></div>
+            <div class="card p-4 mb-4">
+                <div class="flex items-center justify-between gap-2 mb-3">
+                    <h3 class="font-extrabold">Andamento</h3>
+                    <div id="weightRangeSeg" class="seg-group !p-0.5">
+                        <button type="button" class="seg !py-1.5 !px-3 whitespace-nowrap" data-range="30" onclick="setWeightRange(30)">30 gg</button>
+                        <button type="button" class="seg !py-1.5 !px-3 whitespace-nowrap" data-range="90" onclick="setWeightRange(90)">90 gg</button>
+                        <button type="button" class="seg !py-1.5 !px-3 whitespace-nowrap" data-range="0" onclick="setWeightRange(0)">Tutto</button>
+                    </div>
+                </div>
+                <div id="weightChart"></div>
+            </div>
+            <div class="card p-4 mb-4">
+                <p class="field-label">Il tuo obiettivo</p>
+                <div id="weightGoalSeg" class="seg-group">
+                    <button type="button" class="seg" data-goal="lose" onclick="setWeightGoal('lose')">Dimagrire</button>
+                    <button type="button" class="seg" data-goal="keep" onclick="setWeightGoal('keep')">Mantenere</button>
+                    <button type="button" class="seg" data-goal="gain" onclick="setWeightGoal('gain')">Aumentare</button>
+                </div>
+                <p class="text-[11px] text-muted mt-2 ml-1">Serve a colorare le variazioni: verde se vanno verso il tuo obiettivo, rosso se si allontanano.</p>
+            </div>
+            <p class="field-label">Storico</p>
+            <div id="weightList" class="space-y-1.5"></div>
         </section>
 
         <!-- CONVERSIONI -->
@@ -317,6 +359,25 @@
             <div id="timerSettings" class="expander">
                 <div>
                     <div class="pt-3 mt-3 border-t border-line space-y-3">
+                        <div class="bg-inset border border-line rounded-2xl p-3 space-y-3">
+                            <div class="flex items-center gap-3">
+                                <button type="button" id="tSoundBtn" onclick="toggleTimerSound()" class="w-10 h-10 rounded-xl flex items-center justify-center shrink-0 active:scale-90 transition" aria-label="Suoni on/off"></button>
+                                <div class="flex-1 min-w-0">
+                                    <div class="flex items-center justify-between mb-1">
+                                        <span class="text-[11px] font-bold uppercase tracking-wider text-muted">Volume</span>
+                                        <span id="tVolumeLabel" class="text-xs font-extrabold font-mono"></span>
+                                    </div>
+                                    <input type="range" id="tVolume" min="0" max="100" step="5" class="w-full accent-[rgb(var(--c-brand))]" oninput="setTimerVolume(this.value)" onchange="testTimerSound()">
+                                </div>
+                            </div>
+                            <div class="flex items-center gap-3">
+                                <button type="button" id="tVoiceBtn" onclick="toggleTimerVoice()" class="w-10 h-10 rounded-xl flex items-center justify-center shrink-0 active:scale-90 transition" aria-label="Voce on/off"></button>
+                                <div class="flex-1 min-w-0">
+                                    <p class="text-sm font-bold leading-tight">Voce guida</p>
+                                    <p id="tVoiceHint" class="text-[11px] text-muted font-semibold leading-tight"></p>
+                                </div>
+                            </div>
+                        </div>
                         <div class="seg-group">
                             <button id="tModeFree" class="seg active" onclick="setTimerMode('free')">Cronometro</button>
                             <button id="tModeInt" class="seg" onclick="setTimerMode('interval')">Circuito</button>
@@ -495,7 +556,7 @@
                     <input type="text" inputmode="decimal" id="pickerGrams" placeholder="100" class="field text-center" oninput="updatePickerPreview()">
                 </div>
             </div>
-            <p id="pickerPreview" class="text-xs font-bold text-center text-muted mb-3 h-4"></p>
+            <p id="pickerPreview" class="text-xs font-bold text-center mb-3 min-h-[1rem]"></p>
             <button type="submit" class="btn-primary !from-emerald-500 !to-emerald-600 !shadow-emerald-500/25"><i class="fa-solid fa-plus"></i> Inserisci</button>
         </form>
     </div>
@@ -580,7 +641,7 @@
                 <h3 class="text-xl font-extrabold">Sostituisci alimento</h3>
                 <button type="button" class="icon-btn -mr-2" onclick="closeModal('swapModal')" aria-label="Chiudi"><i class="fa-solid fa-xmark text-lg"></i></button>
             </div>
-            <div id="swapInfo" class="bg-accent/10 border border-accent/20 p-4 rounded-2xl mb-3 text-center"></div>
+            <div id="swapInfo" class="mb-3"></div>
             <div class="relative mb-3">
                 <i class="fa-solid fa-magnifying-glass absolute left-4 top-1/2 -translate-y-1/2 text-muted text-sm"></i>
                 <input type="search" id="swapSearch" placeholder="Filtra alternative…" autocomplete="off" class="field !pl-10" oninput="renderSwapList()">
@@ -594,23 +655,33 @@
         <form class="sheet" onsubmit="event.preventDefault(); saveDbFood()">
             <div class="sheet-handle"></div>
             <div class="flex justify-between items-center mb-4">
-                <h3 class="text-xl font-extrabold">Nuovo alimento</h3>
+                <h3 id="addFoodTitle" class="text-xl font-extrabold">Nuovo alimento</h3>
                 <button type="button" class="icon-btn -mr-2" onclick="closeModal('addFoodModal')" aria-label="Chiudi"><i class="fa-solid fa-xmark text-lg"></i></button>
             </div>
             <div class="space-y-3 mb-5">
                 <div><label for="dbFoodName" class="field-label">Nome</label><input type="text" id="dbFoodName" placeholder="Es. Petto di pollo" autocomplete="off" class="field" data-autofocus></div>
                 <div>
-                    <label for="dbFoodCat" class="field-label">Macro principale</label>
-                    <select id="dbFoodCat" class="field">
-                        <option value="Carboidrati">Carboidrati</option>
-                        <option value="Proteine">Proteine</option>
-                        <option value="Grassi">Grassi</option>
-                        <option value="Verdure">Verdure (libere, 0 macro)</option>
-                    </select>
+                    <p class="field-label">Valori per 100 g (dall'etichetta)</p>
+                    <div class="grid grid-cols-3 gap-2">
+                        <div><label for="dbFoodC" class="block text-[11px] font-bold text-sky-500 mb-1 ml-1">Carboidrati</label><input type="text" inputmode="decimal" id="dbFoodC" placeholder="0" class="field text-center" oninput="updateFoodFormPreview()"></div>
+                        <div><label for="dbFoodP" class="block text-[11px] font-bold text-rose-500 mb-1 ml-1">Proteine</label><input type="text" inputmode="decimal" id="dbFoodP" placeholder="0" class="field text-center" oninput="updateFoodFormPreview()"></div>
+                        <div><label for="dbFoodF" class="block text-[11px] font-bold text-amber-500 mb-1 ml-1">Grassi</label><input type="text" inputmode="decimal" id="dbFoodF" placeholder="0" class="field text-center" oninput="updateFoodFormPreview()"></div>
+                    </div>
+                    <p id="dbFoodKcal" class="text-xs font-bold text-muted text-center mt-2"></p>
                 </div>
-                <div><label for="dbFoodMacro" class="field-label">Grammi di macro per 100 g</label><input type="text" inputmode="decimal" id="dbFoodMacro" placeholder="Es. 23" class="field"></div>
+                <div>
+                    <label for="dbFoodCat" class="field-label">Gruppo per le sostituzioni</label>
+                    <select id="dbFoodCat" class="field" onchange="foodCatTouched = true">
+                        <option value="Carboidrati">Fonte di carboidrati</option>
+                        <option value="Proteine">Fonte di proteine</option>
+                        <option value="Grassi">Fonte di grassi</option>
+                        <option value="Verdure">Verdura (libera)</option>
+                    </select>
+                    <p class="text-[11px] text-muted mt-1 ml-1">Scelto in automatico dal macro più alto; puoi cambiarlo.</p>
+                </div>
             </div>
             <button type="submit" class="btn-primary">Salva nel database</button>
+            <button type="button" id="dbFoodDelete" onclick="deleteDbFood()" class="btn-danger mt-2 hidden"><i class="fa-solid fa-trash-can"></i> Elimina alimento</button>
         </form>
     </div>
 
