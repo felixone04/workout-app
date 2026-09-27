@@ -1,6 +1,6 @@
 'use strict';
 
-const APP_VERSION = '2.7.0';
+const APP_VERSION = '2.7.1';
 const STORE_KEY = 'workoutAppV1';
 const LEGACY_KEYS = ['mySigmaV3', 'mySigmaV2'];
 const SETTINGS_KEY = 'workoutAppSettings';
@@ -994,6 +994,19 @@ function historyTable(list, dIdx, eIdx, which) {
 }
 
 const openHistories = new Set();
+// esercizi aperti (dettagli visibili); chiusi mostrano solo il nome
+const openExercises = new Set();
+
+function toggleExercise(key) {
+    const open = !openExercises.has(key);
+    if (open) openExercises.add(key); else openExercises.delete(key);
+    const el = $('ex-' + key);
+    if (!el) return;
+    el.classList.toggle('open', open);
+    const head = el.previousElementSibling;
+    head.setAttribute('aria-expanded', open);
+    head.querySelector('.ex-chevron').classList.toggle('rotate-180', open);
+}
 
 function renderWorkoutDay() {
     const dIdx = nav.workoutDay;
@@ -1017,6 +1030,7 @@ function renderWorkoutDay() {
         const key = `${dIdx}-${eIdx}`;
         const hasHist = ex.history.length > 0 || (isSuper && ex.history2.length > 0);
         const open = openHistories.has(key) && hasHist;
+        const exOpen = openExercises.has(key);
         const setsChip = `<span class="chip">${esc(ex.sets)} <span class="text-muted text-[10px]">SERIE</span></span>`;
 
         const body = isSuper ? `
@@ -1050,25 +1064,28 @@ function renderWorkoutDay() {
             </div>` : `<div class="bg-inset border border-line rounded-xl px-3 py-1">${historyTable(ex.history, dIdx, eIdx, 1)}</div>`;
 
         return `
-            <article class="card p-4">
-                <div class="flex items-center gap-3">
+            <article class="card">
+                <button onclick="toggleExercise('${key}')" class="w-full flex items-center gap-3 p-4 text-left" aria-expanded="${exOpen}">
                     <div class="w-9 h-9 rounded-xl ${isSuper ? 'bg-accent/10 text-accent' : 'bg-brand/10 text-brand'} font-extrabold flex items-center justify-center text-sm shrink-0">${eIdx + 1}</div>
                     <div class="flex-1 min-w-0 flex items-center gap-2 flex-wrap">
                         <h4 class="font-extrabold text-base leading-tight break-words">${esc(ex.name)}</h4>
                         ${isSuper ? '<span class="text-[9px] font-extrabold uppercase tracking-wider bg-accent text-white px-2 py-0.5 rounded-full">Superset</span>' : ''}
                     </div>
-                    <button onclick="promptEditEx(${eIdx})" class="icon-btn -mr-2" aria-label="Modifica"><i class="fa-solid fa-pen text-xs"></i></button>
-                </div>
-                ${body}
-                ${ex.desc ? `<p class="text-xs text-muted mt-3 italic border-l-2 border-brand/40 pl-2">${esc(ex.desc)}</p>` : ''}
-                ${lastHtml}
-                <div class="flex gap-2 mt-4">
-                    <button onclick="promptLogSession(${eIdx})" class="flex-1 bg-brand text-white text-sm font-bold py-2.5 rounded-xl active:scale-[0.97] transition shadow-md shadow-brand/20"><i class="fa-solid fa-plus mr-1"></i> Log</button>
-                    ${hasHist ? `<button onclick="toggleHistory('${key}')" class="flex-1 btn-soft text-sm py-2.5 !rounded-xl"><i class="fa-solid fa-chart-line"></i> Storico <i class="fa-solid fa-chevron-down text-[10px] transition ${open ? 'rotate-180' : ''}"></i></button>` : ''}
-                    <button onclick="moveExercise(${eIdx}, -1)" class="btn-soft w-10 !rounded-xl ${eIdx === 0 ? 'opacity-30 pointer-events-none' : ''}" aria-label="Sposta su"><i class="fa-solid fa-arrow-up text-xs"></i></button>
-                    <button onclick="moveExercise(${eIdx}, 1)" class="btn-soft w-10 !rounded-xl ${eIdx === n - 1 ? 'opacity-30 pointer-events-none' : ''}" aria-label="Sposta giù"><i class="fa-solid fa-arrow-down text-xs"></i></button>
-                </div>
-                ${hasHist ? `<div id="hist-${key}" class="expander ${open ? 'open' : ''}"><div><div class="pt-3"><p class="text-[10px] font-bold uppercase tracking-wider text-muted mb-1 ml-1">Storico · kg × ripetizioni</p>${histHtml}</div></div></div>` : ''}
+                    <i class="ex-chevron fa-solid fa-chevron-down text-xs text-muted transition-transform duration-300 ${exOpen ? 'rotate-180' : ''}"></i>
+                </button>
+                <div id="ex-${key}" class="expander ${exOpen ? 'open' : ''}"><div><div class="px-4 pb-4 -mt-2">
+                    ${body}
+                    ${ex.desc ? `<p class="text-xs text-muted mt-3 italic border-l-2 border-brand/40 pl-2">${esc(ex.desc)}</p>` : ''}
+                    ${lastHtml}
+                    <div class="flex gap-2 mt-4">
+                        <button onclick="promptLogSession(${eIdx})" class="flex-1 bg-brand text-white text-sm font-bold py-2.5 rounded-xl active:scale-[0.97] transition shadow-md shadow-brand/20"><i class="fa-solid fa-plus mr-1"></i> Log</button>
+                        ${hasHist ? `<button onclick="toggleHistory('${key}')" class="flex-1 btn-soft text-sm py-2.5 !rounded-xl"><i class="fa-solid fa-chart-line"></i> Storico <i class="fa-solid fa-chevron-down text-[10px] transition ${open ? 'rotate-180' : ''}"></i></button>` : ''}
+                        <button onclick="promptEditEx(${eIdx})" class="btn-soft w-10 !rounded-xl" aria-label="Modifica"><i class="fa-solid fa-pen text-xs"></i></button>
+                        <button onclick="moveExercise(${eIdx}, -1)" class="btn-soft w-10 !rounded-xl ${eIdx === 0 ? 'opacity-30 pointer-events-none' : ''}" aria-label="Sposta su"><i class="fa-solid fa-arrow-up text-xs"></i></button>
+                        <button onclick="moveExercise(${eIdx}, 1)" class="btn-soft w-10 !rounded-xl ${eIdx === n - 1 ? 'opacity-30 pointer-events-none' : ''}" aria-label="Sposta giù"><i class="fa-solid fa-arrow-down text-xs"></i></button>
+                    </div>
+                    ${hasHist ? `<div id="hist-${key}" class="expander ${open ? 'open' : ''}"><div><div class="pt-3"><p class="text-[10px] font-bold uppercase tracking-wider text-muted mb-1 ml-1">Storico · kg × ripetizioni</p>${histHtml}</div></div></div>` : ''}
+                </div></div></div>
             </article>`;
     }).join('');
 }
@@ -1087,7 +1104,14 @@ function moveExercise(eIdx, dir) {
     const j = eIdx + dir;
     if (j < 0 || j >= list.length) return;
     [list[eIdx], list[j]] = [list[j], list[eIdx]];
-    openHistories.clear();
+    // lo stato aperto/chiuso segue l'esercizio spostato
+    [openHistories, openExercises].forEach((set) => {
+        const a = `${nav.workoutDay}-${eIdx}`, b = `${nav.workoutDay}-${j}`;
+        const ha = set.has(a), hb = set.has(b);
+        set.delete(a); set.delete(b);
+        if (ha) set.add(b);
+        if (hb) set.add(a);
+    });
     persist(); render();
 }
 
@@ -1228,6 +1252,7 @@ async function saveExercise() {
         list[editingEx] = { ...old, ...ex, history: old.history || [], history2: old.history2 || [] };
     } else {
         list.push({ ...ex, history: [], history2: [] });
+        openExercises.add(`${nav.workoutDay}-${list.length - 1}`); // il nuovo esercizio si mostra aperto
     }
     persist();
     await closeModal('exModal');
@@ -1241,7 +1266,7 @@ async function deleteExercise() {
     if (!ex) return;
     if (!(await confirmDialog('Eliminare l\'esercizio?', `"${ex.name}" e il suo storico verranno eliminati.`))) return;
     list.splice(editingEx, 1);
-    openHistories.clear();
+    openHistories.clear(); openExercises.clear();
     persist();
     await closeModal('exModal');
     toast('Esercizio eliminato');
@@ -1332,6 +1357,7 @@ async function confirmLogSession() {
     persist();
     await closeModal('logModal');
     openHistories.add(`${nav.workoutDay}-${loggingEx}`);
+    openExercises.add(`${nav.workoutDay}-${loggingEx}`);
     toast('Sessione salvata');
     render();
 }
@@ -1941,7 +1967,7 @@ function handleImport(e) {
         Object.assign(state, data);
         rebuildFoodIndex();
         persist();
-        openHistories.clear();
+        openHistories.clear(); openExercises.clear();
         await closeModal('settingsModal');
         toast('Dati importati');
         go('home');
