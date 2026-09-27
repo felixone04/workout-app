@@ -1,6 +1,6 @@
 'use strict';
 
-const APP_VERSION = '2.8.1';
+const APP_VERSION = '2.9.0';
 const STORE_KEY = 'workoutAppV1';
 const LEGACY_KEYS = ['mySigmaV3', 'mySigmaV2'];
 const SETTINGS_KEY = 'workoutAppSettings';
@@ -68,7 +68,7 @@ function shake(el) {
 }
 
 // ================= DATI =================
-const state = { workouts: [], weeklyDiet: {}, foodDb: [], weights: [], weightGoal: 'none', measures: [], kcalLog: {} };
+const state = { workouts: [], weeklyDiet: {}, foodDb: [], weights: [], weightGoal: 'none', measures: [], kcalLog: {}, exerciseLib: [] };
 let settings = { theme: 'auto', timer: { sets: 3, work: 45, rest: 90 }, sound: true, volume: 80, voice: true };
 
 // I log della versione precedente hanno solo la data testuale ("20 set 2026"): ricava il timestamp.
@@ -112,7 +112,7 @@ function normalizeExercise(e) {
 }
 
 function normalizeData(p) {
-    const out = { workouts: [], weeklyDiet: {}, foodDb: [], weights: [], weightGoal: 'none', measures: [], kcalLog: {} };
+    const out = { workouts: [], weeklyDiet: {}, foodDb: [], weights: [], weightGoal: 'none', measures: [], kcalLog: {}, exerciseLib: [] };
     if (Array.isArray(p.workouts)) {
         out.workouts = p.workouts.filter((d) => d && typeof d === 'object').map((d) => ({
             ...d,
@@ -153,6 +153,12 @@ function normalizeData(p) {
     if (p.kcalLog && typeof p.kcalLog === 'object') {
         Object.entries(p.kcalLog).forEach(([d, v]) => { if (/^\d{4}-\d{2}-\d{2}$/.test(d) && parseNum(v) >= 0) out.kcalLog[d] = Math.round(parseNum(v)); });
     }
+    // database esercizi: nomi salvati + tutti quelli presenti nelle schede
+    const lib = new Map();
+    const addName = (n) => { const s = str(n); if (s && !lib.has(s.toLowerCase())) lib.set(s.toLowerCase(), s); };
+    (Array.isArray(p.exerciseLib) ? p.exerciseLib : []).forEach(addName);
+    out.workouts.forEach((d) => d.exercises.forEach((e) => (e.type === 'superset' ? [e.subName1, e.subName2] : [e.name]).forEach(addName)));
+    out.exerciseLib = [...lib.values()].sort((a, b) => a.localeCompare(b, 'it'));
     return out;
 }
 
@@ -300,6 +306,7 @@ const VIEWS = {
     workout: { nav: 'workout', eyebrow: () => 'Allenamento', title: () => 'Schede', timer: true },
     workoutDay: { nav: 'workout', parent: 'workout', eyebrow: () => 'Scheda', title: () => state.workouts[nav.workoutDay]?.name || '', timer: true },
     calendar: { nav: 'workout', parent: 'workout', eyebrow: () => 'Allenamento', title: () => 'Calendario' },
+    exercises: { nav: 'workout', parent: 'workout', eyebrow: () => 'Allenamento', title: () => 'Esercizi' },
     weight: { nav: 'weight', eyebrow: () => 'Corpo', title: () => 'Peso e misure' },
     diet: { nav: 'diet', eyebrow: () => 'Dieta', title: () => 'Settimana' },
     dietDay: { nav: 'diet', parent: 'diet', eyebrow: () => 'Dieta', title: () => DAYS[nav.dietDay] || '' },
@@ -356,7 +363,7 @@ function render() {
     document.body.classList.toggle('with-timer', !!v.timer);
 
     ({
-        home: renderHome, workout: renderWorkoutGrid, workoutDay: renderWorkoutDay, calendar: renderCalendar, weight: renderWeight,
+        home: renderHome, workout: renderWorkoutGrid, workoutDay: renderWorkoutDay, calendar: renderCalendar, exercises: renderExerciseLibrary, weight: renderWeight,
         diet: renderDietGrid, dietDay: renderDietDay, db: renderDb
     })[nav.view]();
 }
@@ -534,7 +541,8 @@ function renderHome() {
     const t = todayDayIdx();
     const meals = state.weeklyDiet[DAYS[t]] || [];
     const n = dayNutrients(t);
-    const nEx = state.workouts.reduce((a, d) => a + d.exercises.length, 0);
+    const activeDays = state.workouts.filter((d) => !d.archived);
+    const nEx = activeDays.reduce((a, d) => a + d.exercises.length, 0);
     const last = lastTrainingTs();
     const hour = new Date().getHours();
     const greet = hour < 12 ? 'Buongiorno' : hour < 18 ? 'Buon pomeriggio' : 'Buonasera';
@@ -549,7 +557,7 @@ function renderHome() {
             <div class="relative">
                 <div class="w-12 h-12 rounded-2xl bg-white/20 flex items-center justify-center text-xl mb-4"><i class="fa-solid fa-dumbbell"></i></div>
                 <h3 class="text-2xl font-extrabold">Allenamento</h3>
-                <p class="text-white/80 text-sm font-medium mt-1">${state.workouts.length} ${state.workouts.length === 1 ? 'scheda' : 'schede'} · ${nEx} esercizi</p>
+                <p class="text-white/80 text-sm font-medium mt-1">${activeDays.length} ${activeDays.length === 1 ? 'scheda' : 'schede'} · ${nEx} esercizi</p>
                 <p class="text-white/90 text-xs font-bold mt-3 inline-flex items-center gap-1.5 bg-white/15 px-2.5 py-1 rounded-full">
                     <i class="fa-solid fa-clock-rotate-left"></i> ${last ? 'Ultimo allenamento: ' + relDate(last) : 'Nessuna sessione registrata'}
                 </p>
@@ -1219,19 +1227,22 @@ function renderCalendar() {
 }
 
 function renderWorkoutGrid() {
+    const active = state.workouts.map((day, i) => ({ day, i })).filter((x) => !x.day.archived);
     if (state.workouts.length) renderWeekStrip(); else $('weekStrip').innerHTML = '';
+    $('exLibCount').textContent = `${state.exerciseLib.length} esercizi salvati · aggiungili alle tue schede`;
+    renderArchivedBox();
     const c = $('workoutGrid');
-    if (!state.workouts.length) {
+    if (!active.length) {
         c.innerHTML = `
             <div class="col-span-2 card p-8 text-center">
                 <div class="w-16 h-16 mx-auto rounded-full bg-brand/10 text-brand flex items-center justify-center text-2xl mb-3"><i class="fa-solid fa-clipboard-list"></i></div>
-                <p class="font-extrabold text-lg">Nessuna scheda</p>
-                <p class="text-sm text-muted mb-5">Crea la tua prima giornata di allenamento.</p>
+                <p class="font-extrabold text-lg">${state.workouts.length ? 'Nessuna scheda attiva' : 'Nessuna scheda'}</p>
+                <p class="text-sm text-muted mb-5">${state.workouts.length ? 'Le tue schede sono tutte archiviate: ripristinane una qui sotto o creane una nuova.' : 'Crea la tua prima giornata di allenamento.'}</p>
                 <button onclick="addWorkoutDay()" class="btn-primary"><i class="fa-solid fa-plus"></i> Crea scheda</button>
             </div>`;
         return;
     }
-    c.innerHTML = state.workouts.map((day, i) => {
+    c.innerHTML = active.map(({ day, i }) => {
         let last = 0;
         day.exercises.forEach((e) => [...e.history, ...e.history2].forEach((h) => { if (h.ts > last) last = h.ts; }));
         return `
@@ -1263,7 +1274,8 @@ async function renameWorkoutDay() {
 function duplicateWorkoutDay() {
     const copy = JSON.parse(JSON.stringify(state.workouts[nav.workoutDay]));
     copy.name += ' (copia)';
-    copy.exercises.forEach((e) => { e.history = []; e.history2 = []; });
+    copy.exercises.forEach((e) => { e.history = []; e.history2 = []; delete e.draft; });
+    delete copy.archived;
     state.workouts.splice(nav.workoutDay + 1, 0, copy);
     persist();
     toast('Scheda duplicata');
@@ -1389,6 +1401,17 @@ function renderWorkoutDay() {
     const day = state.workouts[dIdx];
     $('workoutDayTitle').textContent = day.name;
     $('workoutDaySub').textContent = `${day.exercises.length} ${day.exercises.length === 1 ? 'esercizio' : 'esercizi'}`;
+    const banner = $('archivedBanner');
+    banner.classList.toggle('hidden', !day.archived);
+    banner.innerHTML = day.archived ? `
+        <div class="flex items-center gap-3 bg-amber-500/10 border border-amber-500/30 rounded-2xl px-4 py-3 mb-3">
+            <i class="fa-solid fa-box-archive text-amber-500"></i>
+            <p class="flex-1 text-sm font-bold">Scheda archiviata</p>
+            <button onclick="toggleArchiveWorkoutDay()" class="bg-amber-500 text-white text-xs font-bold px-3 py-2 rounded-xl active:scale-95 transition"><i class="fa-solid fa-rotate-left mr-1"></i> Ripristina</button>
+        </div>` : '';
+    const archBtn = document.querySelector('[onclick="toggleArchiveWorkoutDay()"][aria-label]');
+    archBtn.setAttribute('aria-label', day.archived ? 'Ripristina scheda' : 'Archivia scheda');
+    archBtn.innerHTML = `<i class="fa-solid ${day.archived ? 'fa-box-open' : 'fa-box-archive'}"></i>`;
 
     const c = $('exerciseList');
     if (!day.exercises.length) {
@@ -1407,6 +1430,7 @@ function renderWorkoutDay() {
         const hasHist = ex.history.length > 0 || (isSuper && ex.history2.length > 0);
         const open = openHistories.has(key) && hasHist;
         const exOpen = openExercises.has(key);
+        const draft = draftProgress(ex);
         const setsChip = `<span class="chip">${esc(ex.sets)} <span class="text-muted text-[10px]">SERIE</span></span>`;
 
         const body = isSuper ? `
@@ -1446,6 +1470,7 @@ function renderWorkoutDay() {
                     <div class="flex-1 min-w-0 flex items-center gap-2 flex-wrap">
                         <h4 class="font-extrabold text-base leading-tight break-words">${esc(ex.name)}</h4>
                         ${isSuper ? '<span class="text-[9px] font-extrabold uppercase tracking-wider bg-accent text-white px-2 py-0.5 rounded-full">Superset</span>' : ''}
+                        ${draft ? `<span class="text-[9px] font-extrabold uppercase tracking-wider bg-amber-500 text-white px-2 py-0.5 rounded-full"><i class="fa-solid fa-pen-to-square mr-0.5"></i>Bozza ${draft.done}/${draft.total}</span>` : ''}
                     </div>
                     <i class="ex-chevron fa-solid fa-chevron-down text-xs text-muted transition-transform duration-300 ${exOpen ? 'rotate-180' : ''}"></i>
                 </button>
@@ -1454,7 +1479,7 @@ function renderWorkoutDay() {
                     ${ex.desc ? `<p class="text-xs text-muted mt-3 italic border-l-2 border-brand/40 pl-2">${esc(ex.desc)}</p>` : ''}
                     ${lastHtml}
                     <div class="flex gap-2 mt-4">
-                        <button onclick="promptLogSession(${eIdx})" class="flex-1 bg-brand text-white text-sm font-bold py-2.5 rounded-xl active:scale-[0.97] transition shadow-md shadow-brand/20"><i class="fa-solid fa-plus mr-1"></i> Log</button>
+                        <button onclick="promptLogSession(${eIdx})" class="flex-1 ${draft ? 'bg-amber-500 shadow-amber-500/20' : 'bg-brand shadow-brand/20'} text-white text-sm font-bold py-2.5 rounded-xl active:scale-[0.97] transition shadow-md">${draft ? `<i class="fa-solid fa-play mr-1"></i> Continua ${draft.done}/${draft.total}` : '<i class="fa-solid fa-plus mr-1"></i> Log'}</button>
                         ${hasHist ? `<button onclick="toggleHistory('${key}')" class="flex-1 btn-soft text-sm py-2.5 !rounded-xl"><i class="fa-solid fa-chart-line"></i> Storico <i class="fa-solid fa-chevron-down text-[10px] transition ${open ? 'rotate-180' : ''}"></i></button>` : ''}
                         <button onclick="promptEditEx(${eIdx})" class="btn-soft w-10 !rounded-xl" aria-label="Modifica"><i class="fa-solid fa-pen text-xs"></i></button>
                         <button onclick="moveExercise(${eIdx}, -1)" class="btn-soft w-10 !rounded-xl ${eIdx === 0 ? 'opacity-30 pointer-events-none' : ''}" aria-label="Sposta su"><i class="fa-solid fa-arrow-up text-xs"></i></button>
@@ -1577,6 +1602,7 @@ function fillExForm(ex) {
 }
 
 function promptAddEx() {
+    fillExerciseSuggestions();
     editingEx = null;
     $('exModalTitle').textContent = 'Nuovo esercizio';
     $('exDeleteBtn').classList.add('hidden');
@@ -1585,6 +1611,7 @@ function promptAddEx() {
 }
 
 function promptEditEx(eIdx) {
+    fillExerciseSuggestions();
     editingEx = eIdx;
     $('exModalTitle').textContent = 'Modifica esercizio';
     $('exDeleteBtn').classList.remove('hidden');
@@ -1630,6 +1657,7 @@ async function saveExercise() {
         list.push({ ...ex, history: [], history2: [] });
         openExercises.add(`${nav.workoutDay}-${list.length - 1}`); // il nuovo esercizio si mostra aperto
     }
+    addToLibrary(exerciseNames(ex)); // il nome resta nel database esercizi
     persist();
     await closeModal('exModal');
     toast(editingEx !== null ? 'Esercizio aggiornato' : 'Esercizio aggiunto');
@@ -1649,8 +1677,11 @@ async function deleteExercise() {
     render();
 }
 
-// ---- Log sessioni ----
+// ---- Log sessioni (con bozza) ----
+// Mentre ti alleni ogni modifica viene salvata come bozza sull'esercizio (ex.draft), anche se chiudi l'app.
+// Con ✓ confermi le serie fatte; "Salva definitivamente" registra nello storico le serie confermate.
 let loggingEx = null;
+let draftTimer = null;
 
 /** Valori iniziali del log: ultima sessione serie per serie, altrimenti la pianificazione della scheda. */
 function logStartRows(plan, last) {
@@ -1658,8 +1689,40 @@ function logStartRows(plan, last) {
     return plan.map((p, i) => {
         const s = src ? (src[i] || p) : last ? { weight: last.weight, reps: last.reps } : p;
         const reps = parseNum(s.reps);
-        return { weight: str(s.weight), reps: Number.isFinite(reps) ? String(Math.trunc(reps)) : '' };
+        return { weight: str(s.weight), reps: Number.isFinite(reps) ? String(Math.trunc(reps)) : '', done: false };
     });
+}
+
+/** Righe da mostrare: la bozza se esiste (adattata al numero di serie attuale), altrimenti i valori iniziali. */
+function logRows(ex, which) {
+    const plan = which === 2 ? ex.plan2 : ex.plan1;
+    const start = logStartRows(plan, which === 2 ? ex.history2[0] : ex.history[0]);
+    const saved = ex.draft && Array.isArray(ex.draft[`s${which}`]) ? ex.draft[`s${which}`] : null;
+    if (!saved) return start;
+    const rows = saved.slice(0, Math.max(saved.length, plan.length)).map((s) => ({ weight: str(s.weight), reps: str(s.reps), done: !!s.done }));
+    while (rows.length < plan.length) rows.push(start[rows.length]);
+    return rows;
+}
+
+/** Riepilogo della bozza: serie confermate / totali. */
+function draftProgress(ex) {
+    if (!ex.draft) return null;
+    const all = [...(ex.draft.s1 || []), ...(ex.type === 'superset' ? ex.draft.s2 || [] : [])];
+    return { done: all.filter((s) => s.done).length, total: all.length };
+}
+
+function logRowHtml(which, s, i, color) {
+    const c = COLOR[color];
+    return `
+        <div class="grid grid-cols-[2.25rem_1fr_1fr_2.75rem] gap-2 items-center" data-row="${which}-${i}">
+            <span class="h-11 rounded-xl ${s.done ? 'bg-emerald-500 text-white' : c.soft} text-xs font-extrabold flex items-center justify-center transition">${i + 1}</span>
+            <input type="text" inputmode="decimal" data-log="${which}" data-i="${i}" data-k="weight" value="${esc(s.weight)}" placeholder="0" aria-label="Kg serie ${i + 1}" oninput="scheduleLogDraft()" class="field !py-2.5 !px-2 text-center ${s.done ? '!bg-emerald-500/10 !border-emerald-500/40' : ''}">
+            <input type="number" inputmode="numeric" min="0" data-log="${which}" data-i="${i}" data-k="reps" value="${esc(s.reps)}" placeholder="—" aria-label="Ripetizioni serie ${i + 1}" oninput="scheduleLogDraft()" class="field !py-2.5 !px-2 text-center ${s.done ? '!bg-emerald-500/10 !border-emerald-500/40' : ''}">
+            <button type="button" onclick="toggleSetDone(${which}, ${i})" data-done="${s.done ? 1 : 0}" aria-label="${s.done ? 'Annulla conferma' : 'Conferma'} serie ${i + 1}"
+                class="h-11 rounded-xl flex items-center justify-center text-base active:scale-90 transition ${s.done ? 'bg-emerald-500 text-white shadow-md shadow-emerald-500/30' : 'bg-inset border-2 border-dashed border-line text-muted'}">
+                <i class="fa-solid fa-check"></i>
+            </button>
+        </div>`;
 }
 
 function logGroupHtml(which, title, rows, color) {
@@ -1667,47 +1730,107 @@ function logGroupHtml(which, title, rows, color) {
     return `
         <div>
             <p class="text-sm font-extrabold ${c.text} mb-2 truncate"><i class="fa-solid fa-dumbbell mr-1"></i> ${esc(title)}</p>
-            <div class="grid grid-cols-[2.25rem_1fr_1fr] gap-2 mb-1.5 text-[10px] font-bold uppercase tracking-wider text-muted text-center"><span>Serie</span><span>Kg</span><span>Reps</span></div>
-            <div class="space-y-1.5">
-                ${rows.map((s, i) => `
-                    <div class="grid grid-cols-[2.25rem_1fr_1fr] gap-2 items-center">
-                        <span class="h-11 rounded-xl ${c.soft} text-xs font-extrabold flex items-center justify-center">${i + 1}</span>
-                        <input type="text" inputmode="decimal" data-log="${which}" data-i="${i}" data-k="weight" value="${esc(s.weight)}" placeholder="0" aria-label="Kg serie ${i + 1}" class="field !py-2.5 !px-2 text-center">
-                        <input type="number" inputmode="numeric" min="0" data-log="${which}" data-i="${i}" data-k="reps" value="${esc(s.reps)}" placeholder="—" aria-label="Ripetizioni serie ${i + 1}" class="field !py-2.5 !px-2 text-center">
-                    </div>`).join('')}
+            <div class="grid grid-cols-[2.25rem_1fr_1fr_2.75rem] gap-2 mb-1.5 text-[10px] font-bold uppercase tracking-wider text-muted text-center"><span>Serie</span><span>Kg</span><span>Reps</span><span>Fatta</span></div>
+            <div class="space-y-1.5" id="logRows-${which}">
+                ${rows.map((s, i) => logRowHtml(which, s, i, color)).join('')}
             </div>
             ${rows.length > 1 ? `<button type="button" onclick="copyFirstLogSet(${which})" class="mt-2 ml-1 text-xs font-bold ${c.text} active:scale-95 transition"><i class="fa-solid fa-clone mr-1"></i> Copia la serie 1 su tutte</button>` : ''}
         </div>`;
 }
 
+const loggingExercise = () => state.workouts[nav.workoutDay].exercises[loggingEx];
+
 function promptLogSession(eIdx) {
     loggingEx = eIdx;
-    const ex = state.workouts[nav.workoutDay].exercises[eIdx];
+    const ex = loggingExercise();
     const isSuper = ex.type === 'superset';
-    let html = logGroupHtml(1, isSuper ? (ex.subName1 || ex.name) : ex.name, logStartRows(ex.plan1, ex.history[0]), 'brand');
+    let html = logGroupHtml(1, isSuper ? (ex.subName1 || ex.name) : ex.name, logRows(ex, 1), 'brand');
     if (isSuper) {
         html += '<div class="border-t border-line"></div>' +
-            logGroupHtml(2, ex.subName2 || ex.name2 || 'Esercizio 2', logStartRows(ex.plan2, ex.history2[0]), 'accent');
+            logGroupHtml(2, ex.subName2 || ex.name2 || 'Esercizio 2', logRows(ex, 2), 'accent');
     }
     $('logBody').innerHTML = html;
+    renderDraftStatus();
     openModal('logModal');
 }
 
-function copyFirstLogSet(which) {
-    const get = (i, k) => document.querySelector(`#logBody [data-log="${which}"][data-i="${i}"][data-k="${k}"]`);
-    const w = get(0, 'weight').value;
-    const r = get(0, 'reps').value;
-    document.querySelectorAll(`#logBody [data-log="${which}"][data-k="weight"]`).forEach((el) => { el.value = w; });
-    document.querySelectorAll(`#logBody [data-log="${which}"][data-k="reps"]`).forEach((el) => { el.value = r; });
+/** Legge le righe dal modulo: [{ weight, reps, done }] */
+function readLogRows(which) {
+    return [...document.querySelectorAll(`#logRows-${which} [data-row]`)].map((row) => ({
+        weight: row.querySelector('[data-k="weight"]').value.trim(),
+        reps: row.querySelector('[data-k="reps"]').value.trim(),
+        done: row.querySelector('[data-done]').dataset.done === '1'
+    }));
 }
 
-/** Serie compilate di un gruppo; quelle senza ripetizioni non vengono registrate. */
-function readLogSets(which) {
-    return [...document.querySelectorAll(`#logBody [data-log="${which}"][data-k="reps"]`)].map((repsEl) => {
-        const wEl = document.querySelector(`#logBody [data-log="${which}"][data-i="${repsEl.dataset.i}"][data-k="weight"]`);
-        return { weight: cleanWeight(wEl.value), reps: parseInt(repsEl.value, 10) };
-    }).filter((s) => s.reps > 0).map((s) => ({ weight: s.weight, reps: String(s.reps) }));
+function saveLogDraft() {
+    clearTimeout(draftTimer);
+    draftTimer = null;
+    if (loggingEx === null || !$('logRows-1')) return;
+    const ex = loggingExercise();
+    if (!ex) return;
+    ex.draft = { s1: readLogRows(1), ts: Date.now() };
+    if (ex.type === 'superset') ex.draft.s2 = readLogRows(2);
+    persist();
+    renderDraftStatus();
 }
+
+function scheduleLogDraft() {
+    clearTimeout(draftTimer);
+    draftTimer = setTimeout(saveLogDraft, 400);
+}
+
+// chiudendo la finestra la bozza viene salvata subito (anche se si stava ancora scrivendo)
+modalHideHooks.logModal = () => { if (draftTimer) saveLogDraft(); if (nav.view === 'workoutDay') render(); };
+
+function renderDraftStatus() {
+    const ex = loggingExercise();
+    const p = draftProgress(ex);
+    const box = $('logDraftStatus');
+    if (!p) {
+        box.innerHTML = '<i class="fa-regular fa-circle text-muted"></i><span class="text-muted">Nessuna bozza: inizia a registrare le serie</span>';
+        return;
+    }
+    const time = new Date(ex.draft.ts).toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' });
+    box.innerHTML = `
+        <i class="fa-solid fa-cloud-arrow-up text-emerald-500"></i>
+        <span class="flex-1">Bozza salvata alle ${time}</span>
+        <span class="text-emerald-500">${p.done}/${p.total} serie fatte</span>`;
+}
+
+function toggleSetDone(which, i) {
+    const row = document.querySelector(`#logRows-${which} [data-row="${which}-${i}"]`);
+    const repsEl = row.querySelector('[data-k="reps"]');
+    const done = row.querySelector('[data-done]').dataset.done !== '1';
+    if (done && !(parseInt(repsEl.value, 10) > 0)) {
+        shake(repsEl);
+        toast('Inserisci le ripetizioni fatte', 'fa-triangle-exclamation');
+        return;
+    }
+    const s = { weight: row.querySelector('[data-k="weight"]').value.trim(), reps: repsEl.value.trim(), done };
+    const color = which === 2 ? 'accent' : 'brand';
+    row.outerHTML = logRowHtml(which, s, i, color);
+    if (done) vibrate(40);
+    saveLogDraft();
+}
+
+function copyFirstLogSet(which) {
+    const rows = document.querySelectorAll(`#logRows-${which} [data-row]`);
+    const w = rows[0].querySelector('[data-k="weight"]').value;
+    const r = rows[0].querySelector('[data-k="reps"]').value;
+    rows.forEach((row) => {
+        if (row.querySelector('[data-done]').dataset.done === '1') return; // le serie già fatte non si toccano
+        row.querySelector('[data-k="weight"]').value = w;
+        row.querySelector('[data-k="reps"]').value = r;
+    });
+    saveLogDraft();
+}
+
+/** Converte le righe in serie da registrare (solo quelle con ripetizioni). */
+const rowsToSets = (rows) => rows
+    .map((s) => ({ weight: cleanWeight(s.weight), reps: parseInt(s.reps, 10) }))
+    .filter((s) => s.reps > 0)
+    .map((s) => ({ weight: s.weight, reps: String(s.reps) }));
 
 function logEntry(sets, date, ts) {
     // peso/ripetizioni in cima = serie più pesante (compatibilità con la versione precedente)
@@ -1716,25 +1839,65 @@ function logEntry(sets, date, ts) {
 }
 
 async function confirmLogSession() {
-    const ex = state.workouts[nav.workoutDay].exercises[loggingEx];
+    saveLogDraft();
+    const ex = loggingExercise();
     const isSuper = ex.type === 'superset';
-    const sets1 = readLogSets(1);
-    const sets2 = isSuper ? readLogSets(2) : [];
-    const missing = !sets1.length ? 1 : isSuper && !sets2.length ? 2 : 0;
-    if (missing) {
-        shake(document.querySelector(`#logBody [data-log="${missing}"][data-k="reps"]`));
-        toast('Inserisci le ripetizioni di almeno una serie', 'fa-triangle-exclamation');
-        return;
+    const rows1 = readLogRows(1);
+    const rows2 = isSuper ? readLogRows(2) : [];
+    let sets1 = rowsToSets(rows1.filter((s) => s.done));
+    let sets2 = rowsToSets(rows2.filter((s) => s.done));
+
+    if (!sets1.length && !sets2.length) {
+        // nessuna serie confermata: si può comunque salvare tutto ciò che è compilato
+        const all1 = rowsToSets(rows1), all2 = rowsToSets(rows2);
+        if (!all1.length && !all2.length) {
+            toast('Inserisci le ripetizioni di almeno una serie', 'fa-triangle-exclamation');
+            shake(document.querySelector('#logRows-1 [data-k="reps"]'));
+            return;
+        }
+        const ok = await dialog({
+            title: 'Nessuna serie confermata',
+            text: `Non hai toccato ✓ su nessuna serie. Vuoi salvare tutte le ${all1.length + all2.length} serie compilate?`,
+            confirm: 'Salva tutte', cancel: 'Annulla', icon: 'fa-circle-question'
+        });
+        if (!ok) return;
+        sets1 = all1; sets2 = all2;
+    } else {
+        const pending = [...rows1, ...rows2].filter((s) => !s.done).length;
+        if (pending) {
+            const ok = await dialog({
+                title: 'Salvare la sessione?',
+                text: `Verranno registrate le ${sets1.length + sets2.length} serie confermate. Le ${pending} serie non confermate non verranno salvate.`,
+                confirm: 'Salva definitivamente', cancel: 'Continua ad allenarti', icon: 'fa-floppy-disk'
+            });
+            if (!ok) return;
+        }
     }
+
     const ts = Date.now();
     const date = new Date(ts).toLocaleDateString('it-IT', { day: '2-digit', month: 'short', year: 'numeric' });
-    ex.history.unshift(logEntry(sets1, date, ts));
-    if (isSuper) ex.history2.unshift(logEntry(sets2, date, ts));
+    if (sets1.length) ex.history.unshift(logEntry(sets1, date, ts));
+    if (isSuper && sets2.length) ex.history2.unshift(logEntry(sets2, date, ts));
+    delete ex.draft;
     persist();
+    const idx = loggingEx;
     await closeModal('logModal');
-    openHistories.add(`${nav.workoutDay}-${loggingEx}`);
-    openExercises.add(`${nav.workoutDay}-${loggingEx}`);
-    toast('Sessione salvata');
+    openHistories.add(`${nav.workoutDay}-${idx}`);
+    openExercises.add(`${nav.workoutDay}-${idx}`);
+    toast('Sessione salvata nello storico');
+    render();
+}
+
+async function discardLogDraft() {
+    const ex = loggingExercise();
+    if (ex.draft && !(await confirmDialog('Scartare la bozza?', 'Le serie inserite finora per questo esercizio verranno cancellate.', 'Scarta'))) return;
+    clearTimeout(draftTimer);
+    draftTimer = null;
+    delete ex.draft;
+    persist();
+    $('logBody').innerHTML = '';
+    await closeModal('logModal');
+    toast('Bozza scartata', 'fa-trash-can');
     render();
 }
 
@@ -1746,6 +1909,193 @@ async function deleteLog(dIdx, eIdx, which, hIdx) {
     if (!(await confirmDialog('Eliminare questo log?', `${h.date || ''}: ${setsOf(h).map(fmtSet).join(' · ')}`))) return;
     list.splice(hIdx, 1);
     persist(); render();
+}
+
+// ================= ARCHIVIO SCHEDE =================
+// Una scheda archiviata sparisce dall'elenco principale ma conserva esercizi e storico:
+// si può riaprire dalla sezione "Archiviate" e ripristinare quando si vuole.
+let showArchived = false;
+
+async function toggleArchiveWorkoutDay() {
+    const day = state.workouts[nav.workoutDay];
+    if (day.archived) {
+        delete day.archived;
+        persist();
+        toast('Scheda ripristinata');
+        render();
+        return;
+    }
+    if (!(await dialog({
+        title: 'Archiviare la scheda?',
+        text: `"${day.name}" non comparirà più tra le schede attive. Esercizi e storico restano salvati e puoi ripristinarla quando vuoi dalla sezione Archiviate.`,
+        confirm: 'Archivia', cancel: 'Annulla', icon: 'fa-box-archive'
+    }))) return;
+    day.archived = true;
+    persist();
+    toast('Scheda archiviata', 'fa-box-archive');
+    go('workout', {}, { replace: true });
+}
+
+function restoreWorkoutDay(i) {
+    delete state.workouts[i].archived;
+    persist();
+    toast('Scheda ripristinata');
+    render();
+}
+
+function toggleArchivedList() { showArchived = !showArchived; render(); }
+
+function renderArchivedBox() {
+    const archived = state.workouts.map((d, i) => ({ d, i })).filter((x) => x.d.archived);
+    const box = $('archivedBox');
+    if (!archived.length) { box.innerHTML = ''; return; }
+    box.innerHTML = `
+        <button onclick="toggleArchivedList()" class="w-full flex items-center gap-2 px-1 py-2 text-left">
+            <i class="fa-solid fa-box-archive text-muted text-sm"></i>
+            <span class="flex-1 text-sm font-extrabold text-muted">Archiviate (${archived.length})</span>
+            <i class="fa-solid fa-chevron-down text-xs text-muted transition-transform ${showArchived ? 'rotate-180' : ''}"></i>
+        </button>
+        ${showArchived ? `<div class="space-y-1.5 mt-1">${archived.map(({ d, i }) => `
+            <div class="card !rounded-2xl flex items-center gap-3 px-3 py-2.5 opacity-90">
+                <button onclick="go('workoutDay', { workoutDay: ${i} })" class="flex-1 min-w-0 flex items-center gap-3 text-left">
+                    <div class="w-9 h-9 rounded-xl bg-inset text-muted flex items-center justify-center font-extrabold text-sm shrink-0">${esc(String.fromCharCode(65 + (i % 26)))}</div>
+                    <div class="min-w-0">
+                        <p class="text-sm font-bold truncate">${esc(d.name)}</p>
+                        <p class="text-xs text-muted font-semibold">${d.exercises.length} esercizi</p>
+                    </div>
+                </button>
+                <button onclick="restoreWorkoutDay(${i})" class="btn-soft px-3 py-2 text-xs !text-brand shrink-0"><i class="fa-solid fa-rotate-left"></i> Ripristina</button>
+            </div>`).join('')}</div>` : ''}`;
+}
+
+// ================= DATABASE ESERCIZI =================
+// Elenco dei nomi di tutti gli esercizi salvati (anche se poi vengono tolti dalle schede).
+const libKey = (n) => n.trim().toLowerCase();
+
+/** Nomi di un esercizio da ricordare: per il superset i due esercizi che lo compongono. */
+function exerciseNames(ex) {
+    if (ex.type === 'superset') return [ex.subName1, ex.subName2].filter(Boolean);
+    return [ex.name];
+}
+
+function addToLibrary(names) {
+    const known = new Set(state.exerciseLib.map(libKey));
+    let added = false;
+    names.map((n) => str(n)).filter(Boolean).forEach((n) => {
+        if (!known.has(libKey(n))) { state.exerciseLib.push(n); known.add(libKey(n)); added = true; }
+    });
+    if (added) state.exerciseLib.sort((a, b) => a.localeCompare(b, 'it'));
+    return added;
+}
+
+/** In quante schede (attive o archiviate) compare un esercizio. */
+function libraryUsage(name) {
+    const k = libKey(name);
+    return state.workouts.filter((d) => d.exercises.some((e) => [e.name, e.subName1, e.subName2].some((n) => n && libKey(n) === k))).length;
+}
+
+function fillExerciseSuggestions() {
+    $('exLibOptions').innerHTML = state.exerciseLib.map((n) => `<option value="${esc(n)}"></option>`).join('');
+}
+
+async function addLibraryExercise() {
+    const name = await askText({ title: 'Nuovo esercizio', label: 'Nome dell\'esercizio', placeholder: 'Es. Rematore con bilanciere', confirm: 'Salva nel database' });
+    if (!name) return;
+    if (!addToLibrary([name])) { toast('È già nel database', 'fa-circle-info'); return; }
+    persist();
+    toast('Esercizio salvato');
+    render();
+}
+
+async function deleteLibraryExercise(i) {
+    const name = state.exerciseLib[i];
+    if (!name) return;
+    if (!(await confirmDialog('Togliere dal database?', `"${name}" non verrà più suggerito. Le schede in cui è presente non cambiano.`, 'Togli'))) return;
+    state.exerciseLib.splice(i, 1);
+    persist();
+    render();
+}
+
+function renderExerciseLibrary() {
+    const lib = state.exerciseLib;
+    $('exLibSub').textContent = `${lib.length} ${lib.length === 1 ? 'esercizio salvato' : 'esercizi salvati'}`;
+    const q = $('exLibSearch').value.trim().toLowerCase();
+    const shown = lib.map((name, i) => ({ name, i })).filter((x) => !q || x.name.toLowerCase().includes(q));
+    if (!lib.length) {
+        $('exLibList').innerHTML = `
+            <div class="card border-dashed p-8 text-center">
+                <i class="fa-solid fa-book-open text-3xl text-muted/50 mb-3"></i>
+                <p class="text-sm text-muted">Gli esercizi che crei nelle schede vengono salvati qui in automatico. Puoi anche aggiungerli a mano con <b>Nuovo</b>.</p>
+            </div>`;
+        return;
+    }
+    if (!shown.length) { $('exLibList').innerHTML = '<p class="text-sm text-muted text-center py-6">Nessun esercizio trovato.</p>'; return; }
+    // raggruppati per iniziale
+    const groups = {};
+    shown.forEach((x) => { const l = x.name[0].toUpperCase(); (groups[l] = groups[l] || []).push(x); });
+    $('exLibList').innerHTML = Object.keys(groups).sort((a, b) => a.localeCompare(b, 'it')).map((l) => `
+        <div>
+            <p class="text-xs font-extrabold text-accent ml-1 mb-1.5">${esc(l)}</p>
+            <div class="space-y-1.5">${groups[l].map(({ name, i }) => {
+                const used = libraryUsage(name);
+                return `
+                    <div class="card !rounded-2xl flex items-center gap-2 pl-4 pr-2 py-2">
+                        <div class="flex-1 min-w-0">
+                            <p class="text-sm font-bold truncate">${esc(name)}</p>
+                            <p class="text-[11px] text-muted font-semibold">${used ? `In ${used} ${used === 1 ? 'scheda' : 'schede'}` : 'Non usato in nessuna scheda'}</p>
+                        </div>
+                        <button onclick="promptAddToDay(${i})" class="bg-brand text-white text-xs font-bold px-3 py-2 rounded-xl active:scale-95 transition shrink-0"><i class="fa-solid fa-plus mr-1"></i> Scheda</button>
+                        <button onclick="deleteLibraryExercise(${i})" class="w-9 h-9 rounded-full text-muted hover:text-rose-500 flex items-center justify-center shrink-0" aria-label="Togli dal database"><i class="fa-solid fa-xmark text-sm"></i></button>
+                    </div>`;
+            }).join('')}</div>
+        </div>`).join('');
+}
+
+// ---- Dal database a una scheda ----
+let pickLibIdx = null;
+
+function promptAddToDay(i) {
+    pickLibIdx = i;
+    const name = state.exerciseLib[i];
+    const days = state.workouts.map((d, idx) => ({ d, idx })).filter((x) => !x.d.archived);
+    $('pickDaySub').innerHTML = `Scegli dove inserire <b class="text-ink">${esc(name)}</b>: poi imposti serie, peso e ripetizioni.`;
+    $('pickDayList').innerHTML = days.map(({ d, idx }) => {
+        const has = d.exercises.some((e) => [e.name, e.subName1, e.subName2].some((n) => n && libKey(n) === libKey(name)));
+        return `
+            <button onclick="addLibraryToDay(${idx})" class="w-full flex items-center gap-3 bg-inset border border-line p-3 rounded-2xl text-left active:scale-[0.98] transition hover:border-brand/40">
+                <div class="w-9 h-9 rounded-xl bg-brand/10 text-brand flex items-center justify-center font-extrabold text-sm shrink-0">${esc(String.fromCharCode(65 + (idx % 26)))}</div>
+                <div class="flex-1 min-w-0">
+                    <p class="text-sm font-bold truncate">${esc(d.name)}</p>
+                    <p class="text-xs text-muted font-semibold">${d.exercises.length} esercizi${has ? ' · <span class="text-amber-500">già presente</span>' : ''}</p>
+                </div>
+                <i class="fa-solid fa-chevron-right text-muted text-xs"></i>
+            </button>`;
+    }).join('') + `
+        <button onclick="addLibraryToDay(-1)" class="w-full flex items-center gap-3 border-2 border-dashed border-line p-3 rounded-2xl text-left text-muted hover:text-ink transition">
+            <div class="w-9 h-9 rounded-xl bg-inset flex items-center justify-center shrink-0"><i class="fa-solid fa-plus"></i></div>
+            <p class="text-sm font-bold">Nuova scheda</p>
+        </button>`;
+    openModal('pickDayModal');
+}
+
+async function addLibraryToDay(dayIdx) {
+    const name = state.exerciseLib[pickLibIdx];
+    if (!name) return;
+    await closeModal('pickDayModal');
+    if (dayIdx === -1) {
+        const dayName = await askText({ title: 'Nuova scheda', label: 'Nome della giornata', placeholder: 'Es. Petto e dorso', confirm: 'Crea scheda' });
+        if (!dayName) return;
+        state.workouts.push({ name: dayName, exercises: [] });
+        dayIdx = state.workouts.length - 1;
+    }
+    const list = state.workouts[dayIdx].exercises;
+    list.push(normalizeExercise({ name, type: 'classic', sets: '3', plan1: [{ weight: '', reps: '10' }] }));
+    const eIdx = list.length - 1;
+    persist();
+    openExercises.add(`${dayIdx}-${eIdx}`);
+    go('workoutDay', { workoutDay: dayIdx });
+    // si apre subito la modifica per impostare serie, peso e ripetizioni
+    setTimeout(() => promptEditEx(eIdx), 250);
 }
 
 // ================= DIETA =================

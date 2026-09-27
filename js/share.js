@@ -323,6 +323,7 @@ function addImportedDays(days) {
     days.forEach((d) => {
         d.exercises.forEach((e) => { delete e._flag; e.history = []; e.history2 = []; });
         state.workouts.push({ name: d.name, exercises: d.exercises });
+        d.exercises.forEach((e) => addToLibrary(exerciseNames(e)));
     });
     persist();
     toast(days.length > 1 ? `${days.length} schede importate` : 'Scheda importata');

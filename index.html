@@ -171,7 +171,33 @@
                 </div>
             </div>
             <div id="weekStrip" class="mb-4"></div>
+            <button onclick="navTo('exercises')" class="card w-full p-4 mb-4 flex items-center gap-3 text-left active:scale-[0.99] transition">
+                <div class="w-10 h-10 rounded-xl bg-accent/10 text-accent flex items-center justify-center shrink-0"><i class="fa-solid fa-book-open"></i></div>
+                <div class="flex-1 min-w-0">
+                    <p class="font-extrabold text-sm leading-tight">Database esercizi</p>
+                    <p id="exLibCount" class="text-xs text-muted font-semibold"></p>
+                </div>
+                <i class="fa-solid fa-chevron-right text-muted text-xs"></i>
+            </button>
             <div id="workoutGrid" class="grid grid-cols-2 gap-3"></div>
+            <div id="archivedBox" class="mt-5"></div>
+        </section>
+
+        <!-- DATABASE ESERCIZI -->
+        <section id="view-exercises" class="view hidden">
+            <div class="flex items-end justify-between mb-4">
+                <div>
+                    <p class="text-xs font-bold uppercase tracking-widest text-accent">Allenamento</p>
+                    <h2 class="text-3xl font-extrabold tracking-tight">Esercizi</h2>
+                    <p id="exLibSub" class="text-sm text-muted font-medium"></p>
+                </div>
+                <button onclick="addLibraryExercise()" class="btn-soft px-4 h-11 text-sm !text-accent"><i class="fa-solid fa-plus"></i> Nuovo</button>
+            </div>
+            <div class="relative mb-4">
+                <i class="fa-solid fa-magnifying-glass absolute left-4 top-1/2 -translate-y-1/2 text-muted text-sm"></i>
+                <input type="search" id="exLibSearch" placeholder="Cerca esercizio…" autocomplete="off" class="field !pl-10" oninput="renderExerciseLibrary()">
+            </div>
+            <div id="exLibList" class="space-y-4"></div>
         </section>
 
         <!-- CALENDARIO ALLENAMENTI -->
@@ -209,10 +235,12 @@
                 </div>
                 <button onclick="renameWorkoutDay()" class="icon-btn mt-4" aria-label="Rinomina"><i class="fa-solid fa-pen text-sm"></i></button>
             </div>
+            <div id="archivedBanner" class="hidden"></div>
             <div class="flex gap-2 mb-5">
                 <button onclick="promptAddEx()" class="btn-primary flex-1 !w-auto py-3 text-sm"><i class="fa-solid fa-plus"></i> Nuovo esercizio</button>
                 <button onclick="openShare()" class="btn-soft w-12 !text-brand" aria-label="Condividi scheda"><i class="fa-solid fa-share-nodes"></i></button>
                 <button onclick="duplicateWorkoutDay()" class="btn-soft w-12" aria-label="Duplica scheda"><i class="fa-solid fa-copy"></i></button>
+                <button onclick="toggleArchiveWorkoutDay()" class="btn-soft w-12" aria-label="Archivia scheda"><i class="fa-solid fa-box-archive"></i></button>
                 <button onclick="deleteWorkoutDay()" class="btn-soft w-12 !text-rose-500" aria-label="Elimina scheda"><i class="fa-solid fa-trash"></i></button>
             </div>
             <div id="exerciseList" class="space-y-3"></div>
@@ -521,7 +549,8 @@
             <div class="space-y-3 mb-5">
                 <div>
                     <label for="exName" id="exNameLabel" class="field-label">Nome esercizio</label>
-                    <input type="text" id="exName" placeholder="Es. Panca piana" autocomplete="off" class="field" data-autofocus>
+                    <input type="text" id="exName" list="exLibOptions" placeholder="Es. Panca piana" autocomplete="off" class="field" data-autofocus>
+                    <datalist id="exLibOptions"></datalist>
                 </div>
                 <div class="flex items-center justify-between gap-3 bg-inset border border-line rounded-2xl p-2 pl-4">
                     <div class="min-w-0">
@@ -537,13 +566,13 @@
                 <div>
                     <div id="superFields1" class="hidden mb-3">
                         <label for="exSubName1" class="field-label !text-brand">Esercizio 1</label>
-                        <input type="text" id="exSubName1" placeholder="Es. Panca inclinata" autocomplete="off" class="field">
+                        <input type="text" id="exSubName1" list="exLibOptions" placeholder="Es. Panca inclinata" autocomplete="off" class="field">
                     </div>
                     <div id="planTable1"></div>
                 </div>
                 <div id="superFields2" class="hidden pt-4 border-t border-line">
                     <label for="exSubName2" class="field-label !text-accent">Esercizio 2</label>
-                    <input type="text" id="exSubName2" placeholder="Es. Croci ai cavi" autocomplete="off" class="field mb-3">
+                    <input type="text" id="exSubName2" list="exLibOptions" placeholder="Es. Croci ai cavi" autocomplete="off" class="field mb-3">
                     <div id="planTable2"></div>
                 </div>
                 <div>
@@ -558,15 +587,20 @@
 
     <!-- Log sessione -->
     <div id="logModal" class="modal hidden" onclick="if(event.target===this) closeModal(this.id)">
-        <form class="sheet" onsubmit="event.preventDefault(); confirmLogSession()">
+        <form class="sheet" onsubmit="event.preventDefault(); document.activeElement && document.activeElement.blur()">
             <div class="sheet-handle"></div>
             <div class="flex justify-between items-center mb-1">
                 <h3 class="text-xl font-extrabold">Registra sessione</h3>
                 <button type="button" class="icon-btn -mr-2" onclick="closeModal('logModal')" aria-label="Chiudi"><i class="fa-solid fa-xmark text-lg"></i></button>
             </div>
-            <p class="text-sm text-muted mb-4">Precompilato con l'ultima sessione. Lascia vuote le ripetizioni di una serie per non registrarla.</p>
+            <p class="text-sm text-muted mb-3">Fai una serie, controlla peso e ripetizioni e tocca <i class="fa-solid fa-check text-emerald-500"></i> per confermarla. Tutto viene salvato in automatico come bozza: puoi chiudere e riprendere quando vuoi.</p>
+            <div id="logDraftStatus" class="flex items-center gap-2 text-xs font-bold bg-inset border border-line rounded-xl px-3 py-2 mb-4"></div>
             <div id="logBody" class="space-y-4 mb-5"></div>
-            <button type="submit" class="btn-primary"><i class="fa-solid fa-check"></i> Salva nel diario</button>
+            <button type="button" onclick="confirmLogSession()" class="btn-primary"><i class="fa-solid fa-floppy-disk"></i> Salva definitivamente</button>
+            <div class="grid grid-cols-2 gap-2 mt-2">
+                <button type="button" onclick="closeModal('logModal')" class="btn-soft py-3 text-sm"><i class="fa-solid fa-pause"></i> Continua dopo</button>
+                <button type="button" onclick="discardLogDraft()" class="btn-soft py-3 text-sm !text-rose-500"><i class="fa-solid fa-trash-can"></i> Scarta bozza</button>
+            </div>
         </form>
     </div>
 
@@ -663,6 +697,19 @@
                 <button id="progressShareBtn" onclick="shareProgressCard()" class="btn-primary"><i class="fa-solid fa-share-nodes"></i> Condividi</button>
             </div>
             <p class="text-[11px] text-muted text-center mt-3">Periodo: quello scelto sopra il grafico (30 giorni, 90 giorni o tutto).</p>
+        </div>
+    </div>
+
+    <!-- Scegli scheda (dal database esercizi) -->
+    <div id="pickDayModal" class="modal hidden" onclick="if(event.target===this) closeModal(this.id)">
+        <div class="sheet">
+            <div class="sheet-handle"></div>
+            <div class="flex justify-between items-center mb-1">
+                <h3 class="text-xl font-extrabold">Aggiungi a una scheda</h3>
+                <button type="button" class="icon-btn -mr-2" onclick="closeModal('pickDayModal')" aria-label="Chiudi"><i class="fa-solid fa-xmark text-lg"></i></button>
+            </div>
+            <p id="pickDaySub" class="text-sm text-muted mb-4"></p>
+            <div id="pickDayList" class="space-y-1.5"></div>
         </div>
     </div>
 

@@ -7,7 +7,7 @@ Funziona interamente nel browser: i dati restano sul dispositivo (localStorage) 
 
 ## Funzioni
 
-- **Allenamento** – schede per giornata, esercizi classici o superset con peso/ripetizioni per ogni serie, registro delle sessioni con storico e record, riordino esercizi, calendario degli allenamenti.
+- **Allenamento** – schede per giornata (archiviabili), esercizi classici o superset con peso/ripetizioni per ogni serie, log delle sessioni con bozza salvata in automatico serie per serie, storico e record, calendario degli allenamenti, database degli esercizi da cui aggiungerli alle schede.
 - **Condivisione** – una scheda si condivide con un link o un QR (i dati viaggiano nel link, nessun server); le schede si importano anche incollando il testo del personal trainer.
 - **Timer** – cronometro libero o circuito (serie / lavoro / recupero) con suoni a volume regolabile, voce guida (conto alla rovescia e annuncio delle fasi), vibrazione e schermo sempre acceso. Suoni e voce si possono disattivare.
 - **Dieta** – pasti per ogni giorno della settimana con calorie e carboidrati/proteine/grassi calcolati su tutti i valori di ogni alimento; sostituzione di un alimento con un equivalente mostrando la variazione di tutti i macro.
