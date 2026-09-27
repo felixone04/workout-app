@@ -1,6 +1,6 @@
 'use strict';
 
-const APP_VERSION = '2.9.0';
+const APP_VERSION = '2.9.1';
 const STORE_KEY = 'workoutAppV1';
 const LEGACY_KEYS = ['mySigmaV3', 'mySigmaV2'];
 const SETTINGS_KEY = 'workoutAppSettings';
