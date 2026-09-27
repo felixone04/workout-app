@@ -1,6 +1,6 @@
 'use strict';
 
-const APP_VERSION = '2.8.0';
+const APP_VERSION = '2.8.1';
 const STORE_KEY = 'workoutAppV1';
 const LEGACY_KEYS = ['mySigmaV3', 'mySigmaV2'];
 const SETTINGS_KEY = 'workoutAppSettings';
@@ -300,7 +300,7 @@ const VIEWS = {
     workout: { nav: 'workout', eyebrow: () => 'Allenamento', title: () => 'Schede', timer: true },
     workoutDay: { nav: 'workout', parent: 'workout', eyebrow: () => 'Scheda', title: () => state.workouts[nav.workoutDay]?.name || '', timer: true },
     calendar: { nav: 'workout', parent: 'workout', eyebrow: () => 'Allenamento', title: () => 'Calendario' },
-    weight: { nav: 'home', parent: 'home', eyebrow: () => 'Corpo', title: () => 'Peso e misure' },
+    weight: { nav: 'weight', eyebrow: () => 'Corpo', title: () => 'Peso e misure' },
     diet: { nav: 'diet', eyebrow: () => 'Dieta', title: () => 'Settimana' },
     dietDay: { nav: 'diet', parent: 'diet', eyebrow: () => 'Dieta', title: () => DAYS[nav.dietDay] || '' },
     db: { nav: 'db', eyebrow: () => 'Strumenti', title: () => 'Conversioni' }
@@ -518,7 +518,7 @@ function weightHomeCard() {
         if (prev) delta = weightDeltaBadge(last.kg - prev.kg);
     }
     return `
-        <button onclick="go('weight')" class="card w-full text-left p-5 mb-3 active:scale-[0.98] transition flex items-center gap-3">
+        <button onclick="navTo('weight')" class="card w-full text-left p-5 mb-3 active:scale-[0.98] transition flex items-center gap-3">
             <div class="w-12 h-12 rounded-2xl bg-accent/10 text-accent flex items-center justify-center text-xl shrink-0"><i class="fa-solid fa-weight-scale"></i></div>
             <div class="flex-1 min-w-0">
                 <h3 class="text-lg font-extrabold leading-tight">Peso e misure</h3>
@@ -2819,7 +2819,7 @@ setTimerMode(settings.timerMode === 'interval' ? 'interval' : 'free');
     // link di condivisione scheda: gestito da share.js dopo l'avvio
     if (location.hash.startsWith('#import=')) window.pendingShareCode = location.hash.slice(8);
     const hash = location.hash.replace('#', '');
-    const start = ['workout', 'diet', 'db'].includes(hash) ? hash : 'home';
+    const start = ['workout', 'diet', 'weight', 'db'].includes(hash) ? hash : 'home';
     go(start, {}, { replace: true });
 })();
 
