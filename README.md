@@ -11,7 +11,7 @@ Funziona interamente nel browser: i dati restano sul dispositivo (localStorage) 
 - **Condivisione** – una scheda si condivide con un link o un QR (i dati viaggiano nel link, nessun server); le schede si importano anche incollando il testo del personal trainer.
 - **Timer** – cronometro libero o circuito (serie / lavoro / recupero) con suoni a volume regolabile, voce guida (conto alla rovescia e annuncio delle fasi), vibrazione e schermo sempre acceso. Suoni e voce si possono disattivare.
 - **Dieta** – pasti per ogni giorno della settimana con calorie e carboidrati/proteine/grassi calcolati su tutti i valori di ogni alimento; sostituzione di un alimento con un equivalente mostrando la variazione di tutti i macro.
-- **Peso corporeo** – una pesata al giorno con storico, grafico e media a 7 giorni.
+- **Corpo** – peso (una pesata al giorno, grafico con media a 7 giorni), misure corporee (vita, fianchi, petto, braccio, coscia) con storico e grafico, grafico peso + calorie della dieta e card dei progressi da condividere come immagine.
 - **Conversioni** – convertitore tra alimenti con lo stesso macro e database di alimenti personali.
 - Tema chiaro/scuro, installabile sulla schermata Home, funziona offline.
 

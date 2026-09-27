@@ -239,46 +239,80 @@
             <button onclick="addMeal()" class="mt-3 w-full border-2 border-dashed border-line text-muted hover:text-ink hover:border-muted/50 transition py-4 rounded-3xl text-sm font-bold"><i class="fa-solid fa-plus mr-2"></i>Aggiungi pasto</button>
         </section>
 
-        <!-- PESO CORPOREO -->
+        <!-- CORPO: PESO E MISURE -->
         <section id="view-weight" class="view hidden">
             <div class="mb-4">
                 <p class="text-xs font-bold uppercase tracking-widest text-accent">Corpo</p>
-                <h2 class="text-3xl font-extrabold tracking-tight">Peso corporeo</h2>
+                <h2 class="text-3xl font-extrabold tracking-tight">Peso e misure</h2>
             </div>
-            <form class="card p-4 mb-4" onsubmit="event.preventDefault(); saveWeight()">
-                <p class="field-label">Nuova pesata</p>
-                <div class="flex gap-2">
-                    <input type="date" id="weightDate" class="field flex-1 min-w-0" aria-label="Data">
-                    <div class="relative w-32 shrink-0">
-                        <input type="text" inputmode="decimal" id="weightKg" placeholder="75,0" class="field text-center !pr-9 !text-lg" aria-label="Peso in kg">
-                        <span class="absolute right-3 top-1/2 -translate-y-1/2 text-muted text-sm font-bold pointer-events-none">kg</span>
+            <div id="bodyTabs" class="seg-group mb-4">
+                <button type="button" class="seg" data-tab="weight" onclick="setBodyTab('weight')"><i class="fa-solid fa-weight-scale mr-1"></i> Peso</button>
+                <button type="button" class="seg" data-tab="measures" onclick="setBodyTab('measures')"><i class="fa-solid fa-ruler mr-1"></i> Misure</button>
+            </div>
+
+            <!-- Scheda PESO -->
+            <div id="bodyWeight">
+                <form class="card p-4 mb-4" onsubmit="event.preventDefault(); saveWeight()">
+                    <p class="field-label">Nuova pesata</p>
+                    <div class="flex gap-2">
+                        <input type="date" id="weightDate" class="field flex-1 min-w-0" aria-label="Data">
+                        <div class="relative w-32 shrink-0">
+                            <input type="text" inputmode="decimal" id="weightKg" placeholder="75,0" class="field text-center !pr-9 !text-lg" aria-label="Peso in kg">
+                            <span class="absolute right-3 top-1/2 -translate-y-1/2 text-muted text-sm font-bold pointer-events-none">kg</span>
+                        </div>
                     </div>
-                </div>
-                <button type="submit" class="btn-primary mt-3"><i class="fa-solid fa-check"></i> Salva peso</button>
-            </form>
-            <div id="weightStats" class="grid grid-cols-3 gap-2 mb-4"></div>
-            <div class="card p-4 mb-4">
-                <div class="flex items-center justify-between gap-2 mb-3">
-                    <h3 class="font-extrabold">Andamento</h3>
+                    <button type="submit" class="btn-primary mt-3"><i class="fa-solid fa-check"></i> Salva peso</button>
+                </form>
+                <div id="weightStats" class="grid grid-cols-3 gap-2 mb-4"></div>
+                <div class="flex justify-end mb-2">
                     <div id="weightRangeSeg" class="seg-group !p-0.5">
                         <button type="button" class="seg !py-1.5 !px-3 whitespace-nowrap" data-range="30" onclick="setWeightRange(30)">30 gg</button>
                         <button type="button" class="seg !py-1.5 !px-3 whitespace-nowrap" data-range="90" onclick="setWeightRange(90)">90 gg</button>
                         <button type="button" class="seg !py-1.5 !px-3 whitespace-nowrap" data-range="0" onclick="setWeightRange(0)">Tutto</button>
                     </div>
                 </div>
-                <div id="weightChart"></div>
-            </div>
-            <div class="card p-4 mb-4">
-                <p class="field-label">Il tuo obiettivo</p>
-                <div id="weightGoalSeg" class="seg-group">
-                    <button type="button" class="seg" data-goal="lose" onclick="setWeightGoal('lose')">Dimagrire</button>
-                    <button type="button" class="seg" data-goal="keep" onclick="setWeightGoal('keep')">Mantenere</button>
-                    <button type="button" class="seg" data-goal="gain" onclick="setWeightGoal('gain')">Aumentare</button>
+                <div class="card p-4 mb-4">
+                    <h3 class="font-extrabold mb-3">Andamento del peso</h3>
+                    <div id="weightChart"></div>
                 </div>
-                <p class="text-[11px] text-muted mt-2 ml-1">Serve a colorare le variazioni: verde se vanno verso il tuo obiettivo, rosso se si allontanano.</p>
+                <div class="card p-4 mb-4">
+                    <h3 class="font-extrabold">Peso e calorie</h3>
+                    <p class="text-[11px] text-muted font-semibold mb-3">Barre: calorie della dieta di ogni giorno · Linea: peso</p>
+                    <div id="kcalWeightChart"></div>
+                </div>
+                <button onclick="openProgressCard()" class="btn-primary mb-4"><i class="fa-solid fa-share-nodes"></i> Condividi i tuoi progressi</button>
+                <div class="card p-4 mb-4">
+                    <p class="field-label">Il tuo obiettivo</p>
+                    <div id="weightGoalSeg" class="seg-group">
+                        <button type="button" class="seg" data-goal="lose" onclick="setWeightGoal('lose')">Dimagrire</button>
+                        <button type="button" class="seg" data-goal="keep" onclick="setWeightGoal('keep')">Mantenere</button>
+                        <button type="button" class="seg" data-goal="gain" onclick="setWeightGoal('gain')">Aumentare</button>
+                    </div>
+                    <p class="text-[11px] text-muted mt-2 ml-1">Serve a colorare le variazioni: verde se vanno verso il tuo obiettivo, rosso se si allontanano.</p>
+                </div>
+                <p class="field-label">Storico</p>
+                <div id="weightList" class="space-y-1.5"></div>
             </div>
-            <p class="field-label">Storico</p>
-            <div id="weightList" class="space-y-1.5"></div>
+
+            <!-- Scheda MISURE -->
+            <div id="bodyMeasures" class="hidden">
+                <form class="card p-4 mb-4" onsubmit="event.preventDefault(); saveMeasures()">
+                    <div class="flex items-center justify-between gap-2 mb-2">
+                        <p class="field-label !mb-0">Nuove misure (cm)</p>
+                        <input type="date" id="measureDate" class="field !w-auto !py-2 !text-sm" aria-label="Data">
+                    </div>
+                    <div id="measureInputs" class="grid grid-cols-2 gap-2"></div>
+                    <p class="text-[11px] text-muted mt-2 ml-1">Compila solo le misure che hai preso: le altre restano invariate.</p>
+                    <button type="submit" class="btn-primary mt-3"><i class="fa-solid fa-check"></i> Salva misure</button>
+                </form>
+                <div id="measureStats" class="grid grid-cols-3 gap-2 mb-4"></div>
+                <div class="card p-4 mb-4">
+                    <div id="measureChips" class="flex gap-1.5 overflow-x-auto no-scrollbar mb-3 -mx-1 px-1"></div>
+                    <div id="measureChart"></div>
+                </div>
+                <p class="field-label">Storico</p>
+                <div id="measureList" class="space-y-1.5"></div>
+            </div>
         </section>
 
         <!-- CONVERSIONI -->
@@ -607,6 +641,25 @@
             <div id="importPreview" class="mt-4"></div>
             <button id="importSubmit" type="submit" class="btn-primary mt-4" disabled><i class="fa-solid fa-file-import"></i> Importa</button>
         </form>
+    </div>
+
+    <!-- Card dei progressi -->
+    <div id="progressModal" class="modal hidden" onclick="if(event.target===this) closeModal(this.id)">
+        <div class="sheet">
+            <div class="sheet-handle"></div>
+            <div class="flex justify-between items-center mb-3">
+                <h3 class="text-xl font-extrabold">I tuoi progressi</h3>
+                <button type="button" class="icon-btn -mr-2" onclick="closeModal('progressModal')" aria-label="Chiudi"><i class="fa-solid fa-xmark text-lg"></i></button>
+            </div>
+            <div id="progressPreview" class="rounded-3xl overflow-hidden border border-line bg-inset aspect-[4/5] flex items-center justify-center mb-4 text-muted">
+                <i class="fa-solid fa-spinner fa-spin text-2xl"></i>
+            </div>
+            <div class="grid grid-cols-2 gap-2">
+                <button onclick="downloadProgressCard()" class="btn-soft py-3.5 !text-brand"><i class="fa-solid fa-download"></i> Salva immagine</button>
+                <button id="progressShareBtn" onclick="shareProgressCard()" class="btn-primary"><i class="fa-solid fa-share-nodes"></i> Condividi</button>
+            </div>
+            <p class="text-[11px] text-muted text-center mt-3">Periodo: quello scelto sopra il grafico (30 giorni, 90 giorni o tutto).</p>
+        </div>
     </div>
 
     <!-- Copia giorno dieta -->

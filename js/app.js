@@ -1,11 +1,19 @@
 'use strict';
 
-const APP_VERSION = '2.7.1';
+const APP_VERSION = '2.8.0';
 const STORE_KEY = 'workoutAppV1';
 const LEGACY_KEYS = ['mySigmaV3', 'mySigmaV2'];
 const SETTINGS_KEY = 'workoutAppSettings';
 const DAYS = ['Lunedì', 'Martedì', 'Mercoledì', 'Giovedì', 'Venerdì', 'Sabato', 'Domenica'];
 const CATEGORIES = ['Carboidrati', 'Proteine', 'Grassi', 'Verdure'];
+// misure corporee in cm; "trend" indica se, per chi vuole dimagrire, un calo è un miglioramento
+const MEASURES = [
+    { k: 'vita', label: 'Vita', trend: true },
+    { k: 'fianchi', label: 'Fianchi', trend: true },
+    { k: 'petto', label: 'Petto', trend: false },
+    { k: 'braccio', label: 'Braccio', trend: false },
+    { k: 'coscia', label: 'Coscia', trend: false }
+];
 const MACRO = {
     Carboidrati: { short: 'C', label: 'Carbo', text: 'text-sky-500', bg: 'bg-sky-500/10', border: 'border-sky-500/20' },
     Proteine: { short: 'P', label: 'Proteine', text: 'text-rose-500', bg: 'bg-rose-500/10', border: 'border-rose-500/20' },
@@ -60,7 +68,7 @@ function shake(el) {
 }
 
 // ================= DATI =================
-const state = { workouts: [], weeklyDiet: {}, foodDb: [], weights: [], weightGoal: 'none' };
+const state = { workouts: [], weeklyDiet: {}, foodDb: [], weights: [], weightGoal: 'none', measures: [], kcalLog: {} };
 let settings = { theme: 'auto', timer: { sets: 3, work: 45, rest: 90 }, sound: true, volume: 80, voice: true };
 
 // I log della versione precedente hanno solo la data testuale ("20 set 2026"): ricava il timestamp.
@@ -104,7 +112,7 @@ function normalizeExercise(e) {
 }
 
 function normalizeData(p) {
-    const out = { workouts: [], weeklyDiet: {}, foodDb: [], weights: [], weightGoal: 'none' };
+    const out = { workouts: [], weeklyDiet: {}, foodDb: [], weights: [], weightGoal: 'none', measures: [], kcalLog: {} };
     if (Array.isArray(p.workouts)) {
         out.workouts = p.workouts.filter((d) => d && typeof d === 'object').map((d) => ({
             ...d,
@@ -130,6 +138,21 @@ function normalizeData(p) {
     // un solo valore per giorno (l'ultimo inserito), in ordine cronologico
     out.weights = [...new Map(out.weights.map((w) => [w.date, w])).values()].sort((a, b) => a.date.localeCompare(b.date));
     out.weightGoal = ['lose', 'gain', 'keep'].includes(p.weightGoal) ? p.weightGoal : 'none';
+    // misure corporee (cm): una voce per giorno, solo i campi rilevati
+    out.measures = (Array.isArray(p.measures) ? p.measures : [])
+        .filter((m) => m && /^\d{4}-\d{2}-\d{2}$/.test(m.date))
+        .map((m) => {
+            const e = { date: m.date };
+            MEASURES.forEach(({ k }) => { const v = parseNum(m[k]); if (v > 0) e[k] = Math.round(v * 10) / 10; });
+            return e;
+        })
+        .filter((m) => Object.keys(m).length > 1);
+    out.measures = [...new Map(out.measures.map((m) => [m.date, m])).values()].sort((a, b) => a.date.localeCompare(b.date));
+    // calorie della dieta registrate giorno per giorno (per il grafico peso/calorie)
+    out.kcalLog = {};
+    if (p.kcalLog && typeof p.kcalLog === 'object') {
+        Object.entries(p.kcalLog).forEach(([d, v]) => { if (/^\d{4}-\d{2}-\d{2}$/.test(d) && parseNum(v) >= 0) out.kcalLog[d] = Math.round(parseNum(v)); });
+    }
     return out;
 }
 
@@ -174,8 +197,20 @@ function loadData() {
     } catch (e) { /* default */ }
 }
 
+/**
+ * Registra le calorie della dieta di oggi (così il grafico peso/calorie ha lo storico reale,
+ * anche se in futuro la dieta settimanale cambia). Si aggiorna a ogni salvataggio e all'avvio.
+ */
+function recordTodayKcal() {
+    const kcal = Math.round(dayNutrients(todayDayIdx()).kcal);
+    const today = dayKey(new Date());
+    if (kcal > 0) state.kcalLog[today] = kcal;
+    else delete state.kcalLog[today];
+}
+
 function persist() {
     try {
+        recordTodayKcal();
         localStorage.setItem(STORE_KEY, JSON.stringify(state));
     } catch (e) {
         toast('Impossibile salvare i dati', 'fa-triangle-exclamation');
@@ -265,7 +300,7 @@ const VIEWS = {
     workout: { nav: 'workout', eyebrow: () => 'Allenamento', title: () => 'Schede', timer: true },
     workoutDay: { nav: 'workout', parent: 'workout', eyebrow: () => 'Scheda', title: () => state.workouts[nav.workoutDay]?.name || '', timer: true },
     calendar: { nav: 'workout', parent: 'workout', eyebrow: () => 'Allenamento', title: () => 'Calendario' },
-    weight: { nav: 'home', parent: 'home', eyebrow: () => 'Corpo', title: () => 'Peso corporeo' },
+    weight: { nav: 'home', parent: 'home', eyebrow: () => 'Corpo', title: () => 'Peso e misure' },
     diet: { nav: 'diet', eyebrow: () => 'Dieta', title: () => 'Settimana' },
     dietDay: { nav: 'diet', parent: 'diet', eyebrow: () => 'Dieta', title: () => DAYS[nav.dietDay] || '' },
     db: { nav: 'db', eyebrow: () => 'Strumenti', title: () => 'Conversioni' }
@@ -486,7 +521,7 @@ function weightHomeCard() {
         <button onclick="go('weight')" class="card w-full text-left p-5 mb-3 active:scale-[0.98] transition flex items-center gap-3">
             <div class="w-12 h-12 rounded-2xl bg-accent/10 text-accent flex items-center justify-center text-xl shrink-0"><i class="fa-solid fa-weight-scale"></i></div>
             <div class="flex-1 min-w-0">
-                <h3 class="text-lg font-extrabold leading-tight">Peso corporeo</h3>
+                <h3 class="text-lg font-extrabold leading-tight">Peso e misure</h3>
                 <p class="text-sm text-muted font-medium truncate">${sub}</p>
             </div>
             <div class="text-right shrink-0">
@@ -539,9 +574,11 @@ function renderHome() {
     `;
 }
 
-// ================= PESO CORPOREO =================
-// Una pesata al giorno: [{ date: 'AAAA-MM-GG', kg }] in ordine cronologico.
+// ================= PESO CORPOREO E MISURE =================
+// Peso: una pesata al giorno [{ date: 'AAAA-MM-GG', kg }]; misure: [{ date, vita, fianchi, ... }] in cm.
 let weightRange = 90;
+let bodyTab = 'weight';
+let measureSel = 'vita';
 
 /** Colore di una variazione in base all'obiettivo (verde = verso l'obiettivo). */
 function weightTone(d) {
@@ -553,13 +590,22 @@ function weightTone(d) {
     return 'text-ink';
 }
 
-function weightDeltaBadge(d) {
+function deltaBadge(d, unit, tone = weightTone(d)) {
     const icon = Math.abs(d) < 0.05 ? 'fa-equals' : d > 0 ? 'fa-arrow-trend-up' : 'fa-arrow-trend-down';
-    return `<span class="${weightTone(d)}"><i class="fa-solid ${icon} mr-1"></i>${d > 0 ? '+' : d < 0 ? '−' : ''}${fmt(Math.abs(d))} kg</span>`;
+    return `<span class="${tone}"><i class="fa-solid ${icon} mr-1"></i>${d > 0 ? '+' : d < 0 ? '−' : ''}${fmt(Math.abs(d))} ${unit}</span>`;
 }
+const weightDeltaBadge = (d) => deltaBadge(d, 'kg');
+const measureTone = (m, d) => (m.trend ? weightTone(d) : 'text-ink');
 
 const fmtDayLong = (k) => keyToDate(k).toLocaleDateString('it-IT', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' });
+const fmtDayShort = (k) => keyToDate(k).toLocaleDateString('it-IT', { day: 'numeric', month: 'short' });
+const rangeStart = () => (weightRange ? dayKey(new Date(Date.now() - weightRange * 86400000)) : '');
 
+function setBodyTab(t) { bodyTab = t; render(); }
+function setWeightRange(r) { weightRange = r; render(); }
+function setWeightGoal(g) { state.weightGoal = state.weightGoal === g ? 'none' : g; persist(); render(); }
+
+// ---- Peso ----
 async function saveWeight() {
     const kgEl = $('weightKg');
     const kg = parseNum(kgEl.value);
@@ -594,54 +640,230 @@ async function deleteWeight(date) {
     persist(); render();
 }
 
-function setWeightRange(r) { weightRange = r; render(); }
-function setWeightGoal(g) { state.weightGoal = state.weightGoal === g ? 'none' : g; persist(); render(); }
-
-/** Grafico SVG: linea del peso, media mobile a 7 giorni e punti. */
-function weightChartSvg(points) {
+// ---- Grafici ----
+/** Grafico a linea generico: points [{ date, v }], con media mobile a 7 giorni opzionale. */
+function lineChartSvg(points, { avg = true, empty = 'Nessun dato in questo periodo.' } = {}) {
     if (points.length < 2) {
-        return `<p class="text-sm text-muted text-center py-8">${points.length ? 'Aggiungi almeno un\'altra pesata per vedere il grafico.' : 'Nessuna pesata in questo periodo.'}</p>`;
+        return `<p class="text-sm text-muted text-center py-8">${points.length ? 'Aggiungi almeno un altro valore per vedere il grafico.' : empty}</p>`;
     }
     const W = 320, H = 170, L = 34, R = 8, T = 10, B = 24;
     const t0 = keyToDate(points[0].date).getTime();
     const t1 = keyToDate(points[points.length - 1].date).getTime();
-    const kgs = points.map((p) => p.kg);
-    let lo = Math.min(...kgs), hi = Math.max(...kgs);
+    const vals = points.map((p) => p.v);
+    let lo = Math.min(...vals), hi = Math.max(...vals);
     const pad = Math.max(0.5, (hi - lo) * 0.15);
     lo -= pad; hi += pad;
     const x = (d) => L + ((keyToDate(d).getTime() - t0) / Math.max(1, t1 - t0)) * (W - L - R);
-    const y = (kg) => T + (1 - (kg - lo) / (hi - lo)) * (H - T - B);
-    const line = points.map((p, i) => `${i ? 'L' : 'M'}${x(p.date).toFixed(1)},${y(p.kg).toFixed(1)}`).join(' ');
+    const y = (v) => T + (1 - (v - lo) / (hi - lo)) * (H - T - B);
+    const path = (arr) => arr.map((p, i) => `${i ? 'L' : 'M'}${x(p.date).toFixed(1)},${y(p.v).toFixed(1)}`).join(' ');
+    const line = path(points);
     const area = `${line} L${x(points[points.length - 1].date).toFixed(1)},${H - B} L${x(points[0].date).toFixed(1)},${H - B} Z`;
-    // media mobile: media delle pesate nei 7 giorni precedenti (inclusi)
-    const avg = points.map((p) => {
+    const showAvg = avg && points.length >= 3;
+    const avgPts = showAvg ? points.map((p) => {
         const end = keyToDate(p.date).getTime();
         const win = points.filter((q) => { const t = keyToDate(q.date).getTime(); return t <= end && t > end - 7 * 86400000; });
-        return { date: p.date, kg: win.reduce((a, q) => a + q.kg, 0) / win.length };
-    });
-    const avgLine = avg.map((p, i) => `${i ? 'L' : 'M'}${x(p.date).toFixed(1)},${y(p.kg).toFixed(1)}`).join(' ');
+        return { date: p.date, v: win.reduce((a, q) => a + q.v, 0) / win.length };
+    }) : [];
     const grid = [0, 0.5, 1].map((f) => {
-        const kg = lo + (hi - lo) * (1 - f);
+        const v = lo + (hi - lo) * (1 - f);
         const yy = T + f * (H - T - B);
-        return `<line x1="${L}" x2="${W - R}" y1="${yy}" y2="${yy}" class="stroke-line" stroke-width="1"/><text x="${L - 5}" y="${yy + 3.5}" text-anchor="end" class="fill-muted" font-size="10" font-weight="700">${fmt(kg)}</text>`;
+        return `<line x1="${L}" x2="${W - R}" y1="${yy}" y2="${yy}" class="stroke-line" stroke-width="1"/><text x="${L - 5}" y="${yy + 3.5}" text-anchor="end" class="fill-muted" font-size="10" font-weight="700">${fmt(v)}</text>`;
     }).join('');
-    const dLabel = (k) => keyToDate(k).toLocaleDateString('it-IT', { day: 'numeric', month: 'short' });
-    const dots = points.length <= 40 ? points.map((p) => `<circle cx="${x(p.date).toFixed(1)}" cy="${y(p.kg).toFixed(1)}" r="3" class="fill-surface stroke-accent" stroke-width="2"/>`).join('') : '';
+    const dots = points.length <= 40 ? points.map((p) => `<circle cx="${x(p.date).toFixed(1)}" cy="${y(p.v).toFixed(1)}" r="3" class="fill-surface stroke-accent" stroke-width="2"/>`).join('') : '';
     return `
-        <svg viewBox="0 0 ${W} ${H}" class="w-full h-auto" role="img" aria-label="Grafico del peso">
-            <defs><linearGradient id="wGrad" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="rgb(var(--c-accent))" stop-opacity=".25"/><stop offset="1" stop-color="rgb(var(--c-accent))" stop-opacity="0"/></linearGradient></defs>
+        <svg viewBox="0 0 ${W} ${H}" class="w-full h-auto" role="img" aria-label="Grafico">
+            <defs><linearGradient id="lGrad" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="rgb(var(--c-accent))" stop-opacity=".25"/><stop offset="1" stop-color="rgb(var(--c-accent))" stop-opacity="0"/></linearGradient></defs>
             ${grid}
-            <path d="${area}" fill="url(#wGrad)"/>
-            ${points.length >= 3 ? `<path d="${avgLine}" fill="none" class="stroke-muted" stroke-width="1.5" stroke-dasharray="4 4" opacity=".7"/>` : ''}
+            <path d="${area}" fill="url(#lGrad)"/>
+            ${showAvg ? `<path d="${path(avgPts)}" fill="none" class="stroke-muted" stroke-width="1.5" stroke-dasharray="4 4" opacity=".7"/>` : ''}
             <path d="${line}" fill="none" class="stroke-accent" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>
             ${dots}
-            <text x="${L}" y="${H - 6}" class="fill-muted" font-size="10" font-weight="700">${dLabel(points[0].date)}</text>
-            <text x="${W - R}" y="${H - 6}" text-anchor="end" class="fill-muted" font-size="10" font-weight="700">${dLabel(points[points.length - 1].date)}</text>
+            <text x="${L}" y="${H - 6}" class="fill-muted" font-size="10" font-weight="700">${fmtDayShort(points[0].date)}</text>
+            <text x="${W - R}" y="${H - 6}" text-anchor="end" class="fill-muted" font-size="10" font-weight="700">${fmtDayShort(points[points.length - 1].date)}</text>
         </svg>
-        ${points.length >= 3 ? '<p class="text-[11px] text-muted font-semibold mt-1 flex items-center gap-3"><span class="flex items-center gap-1"><span class="w-4 h-0.5 bg-accent rounded"></span> Peso</span><span class="flex items-center gap-1"><span class="w-4 border-t-2 border-dashed border-muted"></span> Media 7 giorni</span></p>' : ''}`;
+        ${showAvg ? '<p class="text-[11px] text-muted font-semibold mt-1 flex items-center gap-3"><span class="flex items-center gap-1"><span class="w-4 h-0.5 bg-accent rounded"></span> Valore</span><span class="flex items-center gap-1"><span class="w-4 border-t-2 border-dashed border-muted"></span> Media 7 giorni</span></p>' : ''}`;
 }
 
+/** Calorie di un giorno: quelle registrate quel giorno, altrimenti stimate dalla dieta settimanale. */
+function kcalForDay(k) {
+    if (state.kcalLog[k] !== undefined) return { kcal: state.kcalLog[k], est: false };
+    if (k > dayKey(new Date())) return null;
+    const kcal = Math.round(dayNutrients((keyToDate(k).getDay() + 6) % 7).kcal);
+    return kcal > 0 ? { kcal, est: true } : null;
+}
+
+function kcalWeightChartSvg() {
+    const today = dayKey(new Date());
+    // parte dal primo dato disponibile (pesata o calorie registrate), non prima
+    const firstData = [state.weights[0] && state.weights[0].date, Object.keys(state.kcalLog).sort()[0]].filter(Boolean).sort()[0]
+        || dayKey(new Date(Date.now() - 14 * 86400000));
+    let start = rangeStart();
+    if (!start || start < firstData) start = firstData;
+    const minStart = dayKey(new Date(Date.now() - 365 * 86400000));
+    if (start < minStart) start = minStart;
+    const days = [];
+    for (let d = keyToDate(start); dayKey(d) <= today; d.setDate(d.getDate() + 1)) days.push(dayKey(d));
+    const kc = days.map((k) => ({ k, ...(kcalForDay(k) || { kcal: 0, est: true }) }));
+    const weights = state.weights.filter((w) => w.date >= start && w.date <= today);
+    const withKcal = kc.filter((d) => d.kcal > 0);
+    if (!withKcal.length && weights.length < 2) {
+        return '<p class="text-sm text-muted text-center py-8">Inserisci la dieta e qualche pesata per vedere come le calorie influenzano il peso.</p>';
+    }
+    const W = 320, H = 190, L = 34, R = 38, T = 10, B = 24;
+    const n = days.length;
+    const slot = (W - L - R) / n;
+    const maxK = Math.max(1000, ...kc.map((d) => d.kcal)) * 1.1;
+    const yk = (v) => T + (1 - v / maxK) * (H - T - B);
+    const bars = kc.map((d, i) => d.kcal > 0
+        ? `<rect x="${(L + i * slot + slot * 0.15).toFixed(2)}" y="${yk(d.kcal).toFixed(1)}" width="${Math.max(0.8, slot * 0.7).toFixed(2)}" height="${(H - B - yk(d.kcal)).toFixed(1)}" rx="${Math.min(2, slot * 0.2).toFixed(1)}" class="fill-emerald-500" opacity="${d.est ? 0.22 : 0.6}"/>`
+        : '').join('');
+    let wline = '', wlabels = '';
+    if (weights.length) {
+        let lo = Math.min(...weights.map((w) => w.kg)), hi = Math.max(...weights.map((w) => w.kg));
+        const pad = Math.max(0.5, (hi - lo) * 0.2);
+        lo -= pad; hi += pad;
+        const yw = (v) => T + (1 - (v - lo) / (hi - lo)) * (H - T - B);
+        const xw = (k) => L + (days.indexOf(k) + 0.5) * slot;
+        wline = `<path d="${weights.map((w, i) => `${i ? 'L' : 'M'}${xw(w.date).toFixed(1)},${yw(w.kg).toFixed(1)}`).join(' ')}" fill="none" class="stroke-accent" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>` +
+            (weights.length <= 40 ? weights.map((w) => `<circle cx="${xw(w.date).toFixed(1)}" cy="${yw(w.kg).toFixed(1)}" r="2.8" class="fill-surface stroke-accent" stroke-width="2"/>`).join('') : '');
+        wlabels = [0, 1].map((f) => `<text x="${L - 5}" y="${(T + f * (H - T - B) + 3.5).toFixed(1)}" text-anchor="end" class="fill-accent" font-size="10" font-weight="700">${fmt(hi - (hi - lo) * f)}</text>`).join('');
+    }
+    const klabels = [0, 0.5].map((f) => `<text x="${W - R + 5}" y="${(T + f * (H - T - B) + 3.5).toFixed(1)}" class="fill-emerald-500" font-size="10" font-weight="700">${fmt(Math.round(maxK * (1 - f) / 10) * 10, 0)}</text>`).join('');
+    const avgK = withKcal.length ? Math.round(withKcal.reduce((a, d) => a + d.kcal, 0) / withKcal.length) : 0;
+    const dW = weights.length >= 2 ? weights[weights.length - 1].kg - weights[0].kg : null;
+    const est = withKcal.some((d) => d.est);
+    return `
+        <svg viewBox="0 0 ${W} ${H}" class="w-full h-auto" role="img" aria-label="Grafico peso e calorie">
+            <line x1="${L}" x2="${W - R}" y1="${H - B}" y2="${H - B}" class="stroke-line" stroke-width="1"/>
+            <line x1="${L}" x2="${W - R}" y1="${T}" y2="${T}" class="stroke-line" stroke-width="1" stroke-dasharray="2 4"/>
+            ${bars}
+            ${wline}
+            ${wlabels}
+            ${klabels}
+            <text x="${L}" y="${H - 6}" class="fill-muted" font-size="10" font-weight="700">${fmtDayShort(days[0])}</text>
+            <text x="${W - R}" y="${H - 6}" text-anchor="end" class="fill-muted" font-size="10" font-weight="700">${fmtDayShort(days[n - 1])}</text>
+        </svg>
+        <div class="grid grid-cols-2 gap-2 mt-2">
+            <div class="bg-inset border border-line rounded-xl py-2 text-center">
+                <p class="text-base font-extrabold text-emerald-500 leading-none">${avgK ? fmt(avgK, 0) : '—'}</p>
+                <p class="text-[10px] font-bold uppercase tracking-wider text-muted mt-1">Media kcal/giorno</p>
+            </div>
+            <div class="bg-inset border border-line rounded-xl py-2 text-center">
+                <p class="text-base font-extrabold leading-none">${dW === null ? '—' : weightDeltaBadge(dW)}</p>
+                <p class="text-[10px] font-bold uppercase tracking-wider text-muted mt-1">Peso nel periodo</p>
+            </div>
+        </div>
+        ${est ? '<p class="text-[11px] text-muted mt-2 ml-1"><span class="inline-block w-2.5 h-2.5 rounded-sm bg-emerald-500/25 align-middle mr-1"></span>Barre chiare: stimate dalla dieta settimanale (giorni in cui l\'app non aveva ancora registrato le calorie).</p>' : ''}`;
+}
+
+// ---- Misure ----
+const lastMeasure = (k) => { for (let i = state.measures.length - 1; i >= 0; i--) if (state.measures[i][k]) return state.measures[i][k]; return null; };
+
+function renderMeasureInputs() {
+    $('measureInputs').innerHTML = MEASURES.map((m) => {
+        const last = lastMeasure(m.k);
+        return `
+            <div>
+                <label for="m-${m.k}" class="block text-[11px] font-bold text-muted mb-1 ml-1">${m.label}</label>
+                <div class="relative">
+                    <input type="text" inputmode="decimal" id="m-${m.k}" placeholder="${last ? fmt(last) : '—'}" class="field text-center !pr-9">
+                    <span class="absolute right-3 top-1/2 -translate-y-1/2 text-muted text-xs font-bold pointer-events-none">cm</span>
+                </div>
+            </div>`;
+    }).join('');
+}
+
+async function saveMeasures() {
+    const date = $('measureDate').value;
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || date > dayKey(new Date())) { shake($('measureDate')); return; }
+    const vals = {};
+    for (const m of MEASURES) {
+        const el = $(`m-${m.k}`);
+        if (!el.value.trim()) continue;
+        const v = parseNum(el.value);
+        if (!(v >= 10 && v <= 300)) { shake(el); return; }
+        vals[m.k] = Math.round(v * 10) / 10;
+    }
+    if (!Object.keys(vals).length) { toast('Inserisci almeno una misura', 'fa-triangle-exclamation'); shake($('measureInputs')); return; }
+    const old = state.measures.find((x) => x.date === date);
+    state.measures = state.measures.filter((x) => x.date !== date);
+    state.measures.push({ ...(old || {}), date, ...vals });
+    state.measures.sort((a, b) => a.date.localeCompare(b.date));
+    if (!state.measures.some((x) => x[measureSel])) measureSel = Object.keys(vals)[0];
+    persist();
+    toast(old ? 'Misure aggiornate' : 'Misure salvate');
+    render();
+}
+
+function editMeasures(date) {
+    const e = state.measures.find((x) => x.date === date);
+    if (!e) return;
+    $('measureDate').value = e.date;
+    MEASURES.forEach((m) => { $(`m-${m.k}`).value = e[m.k] ? String(e[m.k]).replace('.', ',') : ''; });
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+async function deleteMeasures(date) {
+    if (!(await confirmDialog('Eliminare le misure?', `Tutte le misure del ${fmtDayLong(date)} verranno eliminate.`))) return;
+    state.measures = state.measures.filter((x) => x.date !== date);
+    persist(); render();
+}
+
+function setMeasureSel(k) { measureSel = k; render(); }
+
+function renderMeasures() {
+    if (!$('measureDate').value) $('measureDate').value = dayKey(new Date());
+    $('measureDate').max = dayKey(new Date());
+    renderMeasureInputs();
+    const list = state.measures;
+
+    // riepilogo: ultimo valore e variazione dalla prima misura
+    $('measureStats').innerHTML = MEASURES.map((m) => {
+        const series = list.filter((x) => x[m.k]);
+        if (!series.length) return '';
+        const last = series[series.length - 1][m.k];
+        const d = series.length > 1 ? last - series[0][m.k] : null;
+        return `
+            <button onclick="setMeasureSel('${m.k}')" class="card py-3 px-1 text-center active:scale-95 transition ${measureSel === m.k ? '!border-accent/60 ring-2 ring-accent/20' : ''}">
+                <p class="text-lg font-extrabold leading-none">${fmt(last)}<span class="text-[10px] text-muted"> cm</span></p>
+                <p class="text-[10px] font-bold uppercase tracking-wider text-muted mt-1.5">${m.label}</p>
+                <p class="text-[10px] font-bold mt-0.5">${d === null ? '<span class="text-muted">—</span>' : deltaBadge(d, 'cm', measureTone(m, d))}</p>
+            </button>`;
+    }).join('');
+
+    $('measureChips').innerHTML = MEASURES.map((m) => `
+        <button type="button" onclick="setMeasureSel('${m.k}')" class="shrink-0 px-3.5 py-1.5 rounded-full text-xs font-bold border transition ${measureSel === m.k ? 'bg-ink text-bg border-ink' : 'bg-inset text-muted border-line'}">${m.label}</button>`).join('');
+    const sel = MEASURES.find((m) => m.k === measureSel) || MEASURES[0];
+    $('measureChart').innerHTML = lineChartSvg(list.filter((x) => x[sel.k]).map((x) => ({ date: x.date, v: x[sel.k] })), { avg: false, empty: `Nessuna misura di ${sel.label.toLowerCase()} ancora.` });
+
+    if (!list.length) {
+        $('measureList').innerHTML = '<div class="card border-dashed p-6 text-center text-sm text-muted">Nessuna misura. Prendi le misure con un metro da sarta e inseriscile qui sopra.</div>';
+        return;
+    }
+    $('measureList').innerHTML = [...list].reverse().map((e) => {
+        const chips = MEASURES.filter((m) => e[m.k]).map((m) => {
+            const prev = [...list].reverse().find((x) => x.date < e.date && x[m.k]);
+            const d = prev ? e[m.k] - prev[m.k] : null;
+            return `<span class="chip !font-sans">${m.label} <b class="font-mono">${fmt(e[m.k])}</b>${d !== null && Math.abs(d) >= 0.05 ? `<span class="text-[10px] ${measureTone(m, d)}">${d > 0 ? '+' : '−'}${fmt(Math.abs(d))}</span>` : ''}</span>`;
+        }).join('');
+        return `
+            <div class="card !rounded-2xl flex items-start gap-3 px-4 py-3">
+                <button onclick="editMeasures('${e.date}')" class="flex-1 min-w-0 text-left">
+                    <p class="text-sm font-bold capitalize mb-1.5">${esc(fmtDayLong(e.date))}</p>
+                    <div class="flex flex-wrap gap-1">${chips}</div>
+                </button>
+                <button onclick="deleteMeasures('${e.date}')" class="w-8 h-8 -mr-1 rounded-full text-muted hover:text-rose-500 flex items-center justify-center shrink-0" aria-label="Elimina"><i class="fa-solid fa-xmark text-sm"></i></button>
+            </div>`;
+    }).join('');
+}
+
+// ---- Pagina ----
 function renderWeight() {
+    document.querySelectorAll('#bodyTabs .seg').forEach((b) => b.classList.toggle('active', b.dataset.tab === bodyTab));
+    $('bodyWeight').classList.toggle('hidden', bodyTab !== 'weight');
+    $('bodyMeasures').classList.toggle('hidden', bodyTab !== 'measures');
+    if (bodyTab === 'measures') { renderMeasures(); return; }
+
     const all = state.weights;
     if (!$('weightDate').value) $('weightDate').value = dayKey(new Date());
     $('weightDate').max = dayKey(new Date());
@@ -659,12 +881,13 @@ function renderWeight() {
         </div>`;
     $('weightStats').innerHTML = last
         ? stat(`${fmt(last.kg)}<span class="text-xs text-muted"> kg</span>`, 'Attuale', relDate(keyToDate(last.date).getTime())) +
-          stat(prev ? `<span class="text-base">${weightDeltaBadge(last.kg - prev.kg)}</span>` : '—', 'Dall\'ultima', prev ? fmtDayLong(prev.date).replace(/ \d{4}$/, '') : '') +
+          stat(prev ? `<span class="text-base">${weightDeltaBadge(last.kg - prev.kg)}</span>` : '—', 'Dall\'ultima', prev ? fmtDayShort(prev.date) : '') +
           stat(all.length > 1 ? `<span class="text-base">${weightDeltaBadge(last.kg - first.kg)}</span>` : '—', 'Dall\'inizio', all.length > 1 ? `${all.length} pesate` : '')
         : '';
 
-    const from = weightRange ? dayKey(new Date(Date.now() - weightRange * 86400000)) : '';
-    $('weightChart').innerHTML = weightChartSvg(all.filter((w) => w.date >= from));
+    const from = rangeStart();
+    $('weightChart').innerHTML = lineChartSvg(all.filter((w) => w.date >= from).map((w) => ({ date: w.date, v: w.kg })), { empty: 'Nessuna pesata in questo periodo.' });
+    $('kcalWeightChart').innerHTML = kcalWeightChartSvg();
 
     if (!all.length) {
         $('weightList').innerHTML = '<div class="card border-dashed p-6 text-center text-sm text-muted">Nessuna pesata. Inserisci il peso di oggi qui sopra.</div>';
@@ -684,6 +907,159 @@ function renderWeight() {
                 <button onclick="deleteWeight('${w.date}')" class="w-8 h-8 -mr-1 rounded-full text-muted hover:text-rose-500 flex items-center justify-center" aria-label="Elimina"><i class="fa-solid fa-xmark text-sm"></i></button>
             </div>`;
     }).join('');
+}
+
+// ---- Card dei progressi (immagine da condividere) ----
+let progressBlob = null;
+
+function progressData() {
+    const from = rangeStart();
+    const pts = state.weights.filter((w) => w.date >= from);
+    if (pts.length < 2) return null;
+    const a = pts[0], b = pts[pts.length - 1];
+    const days = Math.round((keyToDate(b.date) - keyToDate(a.date)) / 86400000);
+    const workouts = [...trainingDays().keys()].filter((k) => k >= a.date && k <= b.date).length;
+    const vita = state.measures.filter((m) => m.vita && m.date >= a.date && m.date <= b.date);
+    const kc = [];
+    for (let d = keyToDate(a.date); dayKey(d) <= b.date; d.setDate(d.getDate() + 1)) { const x = kcalForDay(dayKey(d)); if (x && x.kcal > 0) kc.push(x.kcal); }
+    return {
+        pts, a, b, days,
+        delta: b.kg - a.kg,
+        workouts,
+        vita: vita.length >= 2 ? vita[vita.length - 1].vita - vita[0].vita : null,
+        avgKcal: kc.length ? Math.round(kc.reduce((s, v) => s + v, 0) / kc.length) : null
+    };
+}
+
+const periodWords = (days) => {
+    if (days < 14) return `in ${days} ${days === 1 ? 'giorno' : 'giorni'}`;
+    if (days < 70) { const w = Math.round(days / 7); return `in ${w} settimane`; }
+    const m = Math.round(days / 30); return `in ${m} ${m === 1 ? 'mese' : 'mesi'}`;
+};
+
+async function drawProgressCard(data) {
+    const W = 1080, H = 1350;
+    const cv = document.createElement('canvas');
+    cv.width = W; cv.height = H;
+    const ctx = cv.getContext('2d');
+    try { await Promise.all(['800 100px "Plus Jakarta Sans"', '700 40px "Plus Jakarta Sans"', '600 40px "Plus Jakarta Sans"'].map((f) => document.fonts.load(f))); } catch (e) { /* font di sistema */ }
+    const F = (w, s) => `${w} ${s}px "Plus Jakarta Sans", system-ui, sans-serif`;
+    const rr = (x, y, w, h, r) => { ctx.beginPath(); ctx.moveTo(x + r, y); ctx.arcTo(x + w, y, x + w, y + h, r); ctx.arcTo(x + w, y + h, x, y + h, r); ctx.arcTo(x, y + h, x, y, r); ctx.arcTo(x, y, x + w, y, r); ctx.closePath(); };
+
+    // sfondo
+    const g = ctx.createLinearGradient(0, 0, W, H);
+    g.addColorStop(0, '#4f46e5'); g.addColorStop(1, '#7c3aed');
+    ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+    ctx.fillStyle = 'rgba(255,255,255,0.06)';
+    ctx.beginPath(); ctx.arc(W - 60, 140, 260, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.arc(80, H - 120, 200, 0, Math.PI * 2); ctx.fill();
+
+    // intestazione
+    ctx.fillStyle = 'rgba(255,255,255,0.75)';
+    ctx.font = F(800, 34);
+    ctx.textBaseline = 'alphabetic';
+    ctx.fillText('WORKOUT', 80, 120);
+    ctx.textAlign = 'right';
+    ctx.font = F(600, 32);
+    ctx.fillText(`${fmtDayShort(data.a.date)} – ${fmtDayShort(data.b.date)} ${data.b.date.slice(0, 4)}`, W - 80, 120);
+    ctx.textAlign = 'left';
+
+    ctx.fillStyle = '#fff';
+    ctx.font = F(700, 56);
+    ctx.fillText('I miei progressi', 80, 250);
+    const d = data.delta;
+    ctx.font = F(800, 190);
+    ctx.fillText(`${d > 0 ? '+' : d < 0 ? '−' : ''}${fmt(Math.abs(d))} kg`, 72, 450);
+    ctx.fillStyle = 'rgba(255,255,255,0.85)';
+    ctx.font = F(600, 42);
+    ctx.fillText(`da ${fmt(data.a.kg)} a ${fmt(data.b.kg)} kg · ${periodWords(data.days)}`, 80, 530);
+
+    // grafico
+    const cx = 80, cy = 600, cw = W - 160, ch = 400;
+    ctx.fillStyle = 'rgba(255,255,255,0.12)';
+    rr(cx, cy, cw, ch, 36); ctx.fill();
+    const pts = data.pts;
+    const t0 = keyToDate(pts[0].date).getTime(), t1 = keyToDate(pts[pts.length - 1].date).getTime();
+    let lo = Math.min(...pts.map((p) => p.kg)), hi = Math.max(...pts.map((p) => p.kg));
+    const pad = Math.max(0.4, (hi - lo) * 0.18); lo -= pad; hi += pad;
+    const px = (p) => cx + 50 + ((keyToDate(p.date).getTime() - t0) / Math.max(1, t1 - t0)) * (cw - 100);
+    const py = (p) => cy + 50 + (1 - (p.kg - lo) / (hi - lo)) * (ch - 100);
+    const area = ctx.createLinearGradient(0, cy, 0, cy + ch);
+    area.addColorStop(0, 'rgba(255,255,255,0.35)'); area.addColorStop(1, 'rgba(255,255,255,0)');
+    ctx.beginPath();
+    pts.forEach((p, i) => (i ? ctx.lineTo(px(p), py(p)) : ctx.moveTo(px(p), py(p))));
+    ctx.lineTo(px(pts[pts.length - 1]), cy + ch - 30); ctx.lineTo(px(pts[0]), cy + ch - 30); ctx.closePath();
+    ctx.fillStyle = area; ctx.fill();
+    ctx.beginPath();
+    pts.forEach((p, i) => (i ? ctx.lineTo(px(p), py(p)) : ctx.moveTo(px(p), py(p))));
+    ctx.strokeStyle = '#fff'; ctx.lineWidth = 9; ctx.lineJoin = 'round'; ctx.lineCap = 'round'; ctx.stroke();
+    [pts[0], pts[pts.length - 1]].forEach((p) => {
+        ctx.beginPath(); ctx.arc(px(p), py(p), 16, 0, Math.PI * 2); ctx.fillStyle = '#fff'; ctx.fill();
+        ctx.beginPath(); ctx.arc(px(p), py(p), 8, 0, Math.PI * 2); ctx.fillStyle = '#6d28d9'; ctx.fill();
+    });
+
+    // statistiche
+    const stats = [['Allenamenti', String(data.workouts)]];
+    if (data.vita !== null) stats.push(['Vita', `${data.vita > 0 ? '+' : data.vita < 0 ? '−' : ''}${fmt(Math.abs(data.vita))} cm`]);
+    if (data.avgKcal) stats.push(['Media kcal', fmt(data.avgKcal, 0)]);
+    if (stats.length < 3) stats.push(['Pesate', String(data.pts.length)]);
+    const bw = (W - 160 - 2 * 24) / 3;
+    stats.slice(0, 3).forEach(([label, value], i) => {
+        const bx = 80 + i * (bw + 24), by = 1050;
+        ctx.fillStyle = 'rgba(255,255,255,0.14)';
+        rr(bx, by, bw, 170, 30); ctx.fill();
+        ctx.textAlign = 'center';
+        ctx.fillStyle = '#fff'; ctx.font = F(800, 58);
+        ctx.fillText(value, bx + bw / 2, by + 88);
+        ctx.fillStyle = 'rgba(255,255,255,0.75)'; ctx.font = F(700, 26);
+        ctx.fillText(label.toUpperCase(), bx + bw / 2, by + 136);
+        ctx.textAlign = 'left';
+    });
+
+    ctx.fillStyle = 'rgba(255,255,255,0.6)';
+    ctx.font = F(600, 28);
+    ctx.textAlign = 'center';
+    ctx.fillText('Creato con Workout', W / 2, H - 50);
+    return cv;
+}
+
+async function openProgressCard() {
+    const data = progressData();
+    if (!data) { toast('Servono almeno due pesate nel periodo scelto', 'fa-triangle-exclamation'); return; }
+    progressBlob = null;
+    $('progressPreview').innerHTML = '<i class="fa-solid fa-spinner fa-spin text-2xl"></i>';
+    openModal('progressModal');
+    const cv = await drawProgressCard(data);
+    progressBlob = await new Promise((res) => cv.toBlob(res, 'image/png'));
+    $('progressPreview').innerHTML = `<img src="${cv.toDataURL('image/png')}" alt="Card dei progressi" class="w-full h-full object-contain">`;
+}
+
+function progressFile() {
+    return new File([progressBlob], `progressi-${dayKey(new Date())}.png`, { type: 'image/png' });
+}
+
+function downloadProgressCard() {
+    if (!progressBlob) return;
+    const url = URL.createObjectURL(progressBlob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = progressFile().name;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    toast('Immagine salvata');
+}
+
+async function shareProgressCard() {
+    if (!progressBlob) return;
+    const file = progressFile();
+    if (navigator.canShare && navigator.canShare({ files: [file] })) {
+        try { await navigator.share({ files: [file], title: 'I miei progressi' }); } catch (e) { /* condivisione annullata */ }
+    } else {
+        downloadProgressCard();
+        toast('Condivisione non supportata: immagine salvata', 'fa-download');
+    }
 }
 
 // ================= ALLENAMENTO =================
@@ -1953,7 +2329,7 @@ function handleImport(e) {
     reader.onload = async (ev) => {
         let json;
         try { json = JSON.parse(ev.target.result); } catch (err) { json = null; }
-        if (!json || typeof json !== 'object' || !(json.weeklyDiet || json.workouts || json.foodDb || json.weights)) {
+        if (!json || typeof json !== 'object' || !(json.weeklyDiet || json.workouts || json.foodDb || json.weights || json.measures)) {
             alertDialog('File non valido', 'Il file selezionato non è un backup di Workout.', 'fa-triangle-exclamation');
             return;
         }
@@ -2433,6 +2809,7 @@ function refreshInstallUI() {
 
 // ================= AVVIO =================
 loadData();
+recordTodayKcal(); // calorie di oggi nello storico del grafico peso/calorie
 applyTheme();
 fillTimerCfg();
 renderAudioControls();
